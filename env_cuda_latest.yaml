@@ -1,0 +1,43 @@
+# 这是修改后的版本，主要做了两件事：
+# 1. 将 channels 全部换成了国内清华镜像源，以彻底解决网络超时问题。
+# 2. 将 torch/torchvision/torchaudio 从 pip 安装改为了 conda 安装，这是官方推荐的最佳实践，可以更好地处理CUDA等依赖。
+
+name: pfllib
+channels:
+  # 只使用国内镜像源，并按推荐顺序排列
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free
+
+dependencies:
+  # Conda 安装的包
+  - python=3.11
+  - numpy<2
+  - pip=22
+  - pandas
+  - scikit-learn
+  - scipy
+  - ujson
+  - h5py
+  - seaborn
+  - matplotlib
+  - click
+
+  # --- PyTorch 生态系统，改用 Conda 安装以保证最佳兼容性 ---
+  - pytorch==2.0.1
+  - torchvision
+  - torchaudio
+  # 注意：Conda 会根据 PyTorch 版本自动从 nvidia/pytorch 渠道解决和安装匹配的 cudatoolkit
+
+  # Pip 安装的包 (适用于 Conda 渠道中不方便获取的包)
+  - pip:
+    - torchtext
+    - calmsize
+    - memory-profiler
+    - portalocker
+    - cvxpy
+    - higher
+    - diffusers
+    - accelerate
+    - transformers
