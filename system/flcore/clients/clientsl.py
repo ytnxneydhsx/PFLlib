@@ -36,7 +36,7 @@ class clientsl(Client):
             max_local_epochs = np.random.randint(1, max_local_epochs // 2)
 
         for epoch in range(max_local_epochs):
-            (x,y)=self.get_next_batch
+            (x,y)=self.get_next_batch()
             if type(x) == type([]):
                 x[0] = x[0].to(self.device)
             else:

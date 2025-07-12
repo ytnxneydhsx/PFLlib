@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+import matplotlib
+matplotlib.use('Agg')
+
+
 import copy
 import torch
 import argparse
@@ -368,7 +372,7 @@ def run(args):
             server = FedAS(args, i)
             
         elif args.algorithm == "SL":
-            server = sl(args, i)
+            server = sl(args, i,2)
 
         
         else:
