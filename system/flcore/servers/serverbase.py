@@ -7,7 +7,8 @@ import time
 import random
 from utils.data_utils import read_client_data
 from utils.dlg import DLG
-
+from collections import OrderedDict
+import torch.nn as nn
 
 class Server(object):
     def __init__(self, args, times):
@@ -467,3 +468,28 @@ class Server(object):
         ids = [c.id for c in self.new_clients]
 
         return ids, num_samples, tot_correct, tot_auc
+    
+    def split_model(self,model: nn.Module, split_point: int) -> tuple[nn.Module, nn.Module]:
+
+        all_layers = OrderedDict(model.named_children())
+        
+        if not all_layers:
+            raise ValueError("模型没有可切分的子层。")
+        # split_point 应该在 [0, len(all_layers) - 1] 范围内
+        if split_point < 0 or split_point >= len(all_layers): 
+            raise IndexError(f"切分点 {split_point} 超出模型层数范围 ({len(all_layers)} 层)。有效范围是 [0, {len(all_layers)-1}]。")
+
+        layers_part1 = OrderedDict()
+        layers_part2 = OrderedDict()
+
+        for i, (name, layer) in enumerate(all_layers.items()):
+            if i <= split_point: # 包含 split_point 对应的层
+                layers_part1[name] = layer
+            else:
+                layers_part2[name] = layer
+
+        model_part1 = nn.Sequential(layers_part1)
+        model_part2 = nn.Sequential(layers_part2)
+
+        return model_part1, model_part2
+    
