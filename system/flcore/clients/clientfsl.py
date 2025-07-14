@@ -4,11 +4,11 @@ import numpy as np
 import time
 from flcore.clients.clientbase import Client
 
-class clientsl(Client):
+class clientfsl(Client):
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
         super().__init__(args, id, train_samples, test_samples, **kwargs)
-        # self.trainloader = self.load_train_data()
-        # self._data_iterator = iter(self.trainloader)
+        self.trainloader = self.load_train_data()
+        self._data_iterator = iter(self.trainloader)
         self.train_cnt=0
     # def get_next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
     #     try:
@@ -30,7 +30,7 @@ class clientsl(Client):
         
         self.model.train()
         up_model.train() 
-        up_optimizer = torch.optim.SGD(up_optimizer.parameters(), lr=self.learning_rate)
+        up_optimizer = torch.optim.SGD(up_model.parameters(), lr=self.learning_rate)
         
         start_time = time.time()
 

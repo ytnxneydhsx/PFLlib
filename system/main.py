@@ -53,6 +53,7 @@ from flcore.servers.serverda import PFL_DA
 from flcore.servers.serverlc import FedLC
 from flcore.servers.serveras import FedAS
 from flcore.servers.serversl import sl
+from flcore.servers.serverfsl import fsl
 
 from flcore.trainmodel.models import *
 
@@ -373,6 +374,9 @@ def run(args):
             
         elif args.algorithm == "SL":
             server = sl(args, i,2)
+        
+        elif args.algorithm == "FSL":
+            server = fsl(args, i,2)
 
         
         else:
