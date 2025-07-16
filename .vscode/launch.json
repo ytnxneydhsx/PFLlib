@@ -1,0 +1,30 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Run main.py with System CWD",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/system/main.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/system", 
+            "args": [
+                "-data", "MNIST",
+                "-m", "split_CNN",
+                "-algo", "FSL",
+                "-gr", "2000",
+                "-did", "0",
+                "-eg", "20"
+            ]
+        },
+        {
+            "name": "Python: Run Controller Test",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/system/controller/test/controllerbase_test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/system", 
+            "args": []
+        }
+    ]
+}

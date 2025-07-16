@@ -164,21 +164,20 @@ class SplitCNN(nn.Module):
                       stride=1,
                       bias=True),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(2, 2))
+            nn.MaxPool2d(kernel_size=(2, 2)),
+            nn.Flatten(start_dim=1) 
         )
-        self.flatten_layer = nn.Flatten(start_dim=1) 
         self.fc1 = nn.Sequential(
             nn.Linear(dim, 512), 
             nn.ReLU(inplace=True)
         )
-        self.fc = nn.Linear(512, num_classes)
+        self.fc2 = nn.Linear(512, num_classes)
 
     def forward(self, x):
         out = self.conv1(x)
         out = self.conv2(out)
-        out = self.flatten_layer(out) 
         out = self.fc1(out)
-        out = self.fc(out)
+        out = self.fc2(out)
         return out
 
 # class FedAvgCNN(nn.Module):
@@ -561,3 +560,138 @@ class TextCNN(nn.Module):
 #   @staticmethod
 #   def backward(ctx, grad_output):
 #     return grad_output
+
+
+
+
+
+class VGG16_cifar10(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+
+        #1
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(3,64,kernel_size=3,padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+        )
+        #2
+        self.conv2= nn.Sequential(
+            nn.Conv2d(64,64,kernel_size=3,padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+        )
+        #3
+        self.conv3= nn.Sequential(
+            nn.Conv2d(64,128,kernel_size=3,padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+        )
+        #4
+        self.conv4= nn.Sequential(
+            nn.Conv2d(128,128,kernel_size=3,padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+        )
+        #5
+        self.conv5= nn.Sequential(
+            nn.Conv2d(128,256,kernel_size=3,padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+        )
+        #6
+        self.conv6= nn.Sequential(
+            nn.Conv2d(256,256,kernel_size=3,padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+        )
+        #7
+        self.conv7= nn.Sequential(
+            nn.Conv2d(256,256,kernel_size=3,padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+        )
+        #8
+        self.conv8= nn.Sequential(
+            nn.Conv2d(256,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+        )
+        #9
+        self.conv9= nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+        )
+        #10
+        self.conv10= nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+        )
+        #11
+        self.conv11= nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+        )
+        #12
+        self.conv12= nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+        )
+        #13
+        self.conv13= nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+            nn.AvgPool2d(kernel_size=1,stride=1),
+            nn.Flatten(),
+        )
+        
+
+        self.fc1 = nn.Sequential(
+            #14
+            nn.Linear(512,4096),
+            nn.ReLU(True),
+            nn.Dropout(),
+        )
+        #15
+        self.fc2 = nn.Sequential(
+            nn.Linear(4096, 4096),
+            nn.ReLU(True),
+            nn.Dropout(),
+        )
+        #16
+        self.fc3 = nn.Sequential( 
+            nn.Linear(4096,num_classes),
+            )
+
+    def forward(self, x):
+        # 1. 依次通过所有的卷积层块
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
+        x = self.conv6(x)
+        x = self.conv7(x)
+        x = self.conv8(x)
+        x = self.conv9(x)
+        x = self.conv10(x)
+        x = self.conv11(x)
+        x = self.conv12(x)
+        x = self.conv13(x)
+        # 3. 依次通过所有的全连接层块
+        x = self.fc1(x)
+        x = self.fc2(x)
+        x = self.fc3(x)
+        
+        # 4. 返回最终的输出
+        return x
