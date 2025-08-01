@@ -16,10 +16,10 @@ parser = argparse.ArgumentParser()
 
 args = parser.parse_args()
 args.batch_size=50
-args.dataset = 'Cifar10'
+args.dataset = 'MNIST'
 args.num_classes = 10
 args.device='cuda'
-args.model = models.VGG16_cifar10().to(args.device)
+args.model = models.ResNet(models.BasicBlock, 10).to(args.device)
 args.global_model = args.model
 
 

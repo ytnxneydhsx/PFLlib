@@ -3,26 +3,16 @@ import torch
 import numpy as np
 import time
 from flcore.clients.clientbase import Client
+from utils.data_utils import read_client_data
 
-class clientsl(Client):
-    def __init__(self, args, id, train_samples, test_samples, **kwargs):
-        super().__init__(args, id, train_samples, test_samples, **kwargs)
-        # self.trainloader = self.load_train_data()
-        # self._data_iterator = iter(self.trainloader)
+class clientslcs(Client):
+    def __init__(self, args, id, train_samples, test_samples, **kwargs,):
+        super().__init__(args, id, train_samples, test_samples,**kwargs)
         self.train_cnt=0
-    # def get_next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
-    #     try:
-    #         # 尝试从当前迭代器获取下一个批次的数据
-    #         data, labels = next(self._data_iterator)
-    #         return data, labels
-    #     except StopIteration:
-    #         # 如果捕获到 StopIteration 异常，说明当前 epoch 的数据已全部遍历完
-    #         # 重置迭代器，让它从 trainloader 的开头重新提供数据
-    #         self._data_iterator = iter(self.trainloader)
-    #         # 获取新 epoch 的第一个批次数据
-    #         data, labels = next(self._data_iterator)
-    #         return data, labels
+        self.data_select_obj=None
+        self.client_data=read_client_data(self.dataset, self.id, is_train=True, few_shot=self.few_shot)
 
+        
 
     def split_train(self,up_model):
 
@@ -56,6 +46,7 @@ class clientsl(Client):
                 self.optimizer.step()
                 up_optimizer.step()
 
+        # self.model.cpu()
 
         if self.learning_rate_decay:
             self.learning_rate_scheduler.step()
@@ -65,5 +56,17 @@ class clientsl(Client):
 
 
         return up_model,self.model
+    
+    def client_data_select(self):
+        if self.data_select_obj == None:
+            pass
+        else:
+            self.client_data = self.data_select_obj.select_data_sort()
+            
+
+
+
+
+
 
 

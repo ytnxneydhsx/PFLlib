@@ -564,7 +564,6 @@ class TextCNN(nn.Module):
 
 
 
-
 class VGG16_cifar10(nn.Module):
     def __init__(self, num_classes=10):
         super().__init__()
@@ -695,3 +694,143 @@ class VGG16_cifar10(nn.Module):
         
         # 4. 返回最终的输出
         return x
+    
+
+
+
+#---------------restnet18------------
+class BasicBlock(nn.Module):
+    expansion = 1 # 基础块的输出通道是输入通道的 1 倍
+
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+        super(BasicBlock, self).__init__()
+        # 第一个 3x3 卷积层
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        
+        # 第二个 3x3 卷积层
+        self.conv2 = nn.Conv2d(out_channels, out_channels * self.expansion, kernel_size=3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels * self.expansion)
+        
+        # downsample 层用于处理残差连接的维度不匹配问题
+        # 通常在每个阶段的第一个块需要下采样时用到
+        self.downsample = downsample 
+
+    def forward(self, x):
+        identity = x # 保存原始输入用于残差连接
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        # 如果存在 downsample 层，对 identity 进行变换
+        if self.downsample is not None:
+            identity = self.downsample(identity)
+
+        out += identity # 残差连接：F(x) + x
+        out = self.relu(out)
+
+        return out
+
+# --- 2. 定义 ResNet 主体结构 ---
+class ResNet18(nn.Module):
+    def __init__(self, block, num_classes): # num_classes 默认为 10 (MNIST)
+        super(ResNet18, self).__init__()
+        self.in_channels = 64 # 初始卷积层的输出通道数
+        layers=[2, 2, 2, 2]
+        # 1. 初始层 (Input Stem)
+        # 核心修改：第一个卷积层的输入通道改为 1 (for grayscale MNIST)
+        # 卷积核大小保持为 7x7，步长 2
+        self.conv1= nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        )
+        # 2. 残差块阶段
+        # layers 参数定义了每个阶段的块数量，对于 ResNet-18 是 [2, 2, 2, 2]
+        current_in_channels = 64 # 初始层输出的通道数
+        
+        # 为了将 layer1, layer2, layer3, layer4 放入一个 Sequential
+        # 我们需要先分别创建它们，因为 _make_layer 内部需要更新 current_in_channels
+        
+        # Stage 1 (Conv2_x)
+        # _make_layer 负责处理 downsample 参数和更新 in_channels
+        # 这里传入 False 给 make_layer 的 is_first_layer_in_stage 来区分是否需要 downsample
+        self.conv2_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 64, layers[0], False)
+
+        self.conv3_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 128, layers[1], True)
+
+        self.conv4_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 256, layers[2], True)
+
+        self.conv5_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 512, layers[3], True)
+
+        # 3. 最终分类层 (Classification Head)
+
+        self.fc = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)), # 全局平均池化到 1x1
+            nn.Flatten(start_dim=1), 
+            nn.Linear(512 * block.expansion, num_classes) 
+
+        )
+
+        # 权重初始化 (可选，但推荐)
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def _make_layer_sequential(self, block, in_channels_prev_stage, out_channels_stage, blocks, is_first_layer_in_stage, stride=1):
+        """
+        构建一个残差阶段 (Stage) 并返回 nn.Sequential 模块和更新后的 in_channels。
+        block: 残差块类型 (例如 BasicBlock)
+        in_channels_prev_stage: 上一个阶段的输出通道数，即当前阶段的输入通道数
+        out_channels_stage: 当前阶段中每个残差块的输出通道数 (不包含 expansion)
+        blocks: 当前阶段包含的残差块数量
+        is_first_layer_in_stage: 是否是整个网络的第一个 make_layer 调用（即 layer1）
+                                 因为 layer1 不会进行通道下采样，只有空间下采样。
+                                 （实际上 stride=1，所以 BasicBlock 也不进行空间下采样）
+        stride: 第一个块的步长，用于下采样
+        """
+        downsample = None
+        # 当 stride != 1 或输入通道与输出通道不匹配时，需要 downsample
+        # 简化的判断逻辑：如果当前阶段的输出通道数与上一个阶段的输出通道数不同，或需要下采样
+        if stride != 1 or in_channels_prev_stage != out_channels_stage * block.expansion:
+            downsample = nn.Sequential(
+                nn.Conv2d(in_channels_prev_stage, out_channels_stage * block.expansion, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels_stage * block.expansion),
+            )
+
+        layers = []
+        # 添加当前阶段的第一个残差块，使用 in_channels_prev_stage 作为输入
+        layers.append(block(in_channels_prev_stage, out_channels_stage, stride, downsample))
+        
+        # 更新当前阶段内部的 in_channels，用于后续的残差块
+        # 这是当前阶段所有后续块的输入通道，也是这个阶段的最终输出通道
+        current_block_in_channels = out_channels_stage * block.expansion 
+        
+        # 添加当前阶段的剩余残差块
+        for _ in range(1, blocks):
+            layers.append(block(current_block_in_channels, out_channels_stage))
+
+        return nn.Sequential(*layers), current_block_in_channels
+
+    def forward(self, x):
+        x = self.conv1(x)
+
+        x = self.conv2_res(x)
+        x = self.conv3_res(x)
+        x = self.conv4_res(x)
+        x = self.conv5_res(x)
+
+        x = self.fc(x)
+
+        return x
+
+    

@@ -2,7 +2,6 @@
 import matplotlib
 matplotlib.use('Agg')
 
-
 import copy
 import torch
 import argparse
@@ -54,6 +53,7 @@ from flcore.servers.serverlc import FedLC
 from flcore.servers.serveras import FedAS
 from flcore.servers.serversl import sl
 from flcore.servers.serverfsl import fsl
+from flcore.servers.serverslcs import slcs
 
 from flcore.trainmodel.models import *
 
@@ -65,6 +65,10 @@ from flcore.trainmodel.transformer import *
 
 from utils.result_utils import average_data
 from utils.mem_utils import MemReporter
+
+from data_select.datakmeans import  datakmeans
+
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.ERROR)
@@ -111,6 +115,11 @@ def run(args):
                  args.model = SplitCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
         
 
+
+        elif model_str=="ResNet18": # non-convex
+            if "MNIST" in args.dataset:
+                args.model=ResNet18(BasicBlock,10).to(args.device)
+
         elif model_str == "DNN": # non-convex
             if "MNIST" in args.dataset:
                 args.model = DNN(1*28*28, 100, num_classes=args.num_classes).to(args.device)
@@ -119,8 +128,8 @@ def run(args):
             else:
                 args.model = DNN(60, 20, num_classes=args.num_classes).to(args.device)
         
-        elif model_str == "ResNet18":
-            args.model = torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes).to(args.device)
+        # elif model_str == "ResNet18":
+        #     args.model = torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes).to(args.device)
             
             # args.model = torchvision.models.resnet18(pretrained=True).to(args.device)
             # feature_dim = list(args.model.fc.parameters())[0].shape[1]
@@ -378,6 +387,11 @@ def run(args):
         elif args.algorithm == "FSL":
             server = fsl(args, i,2)
 
+        elif args.algorithm == "SLCS":
+            if args.data_select_name=='keames':
+                args.data_select_obj=datakmeans
+            server = slcs(args, i,2)
+
         
         else:
             raise NotImplementedError
@@ -506,6 +520,12 @@ if __name__ == "__main__":
     # FedDBE
     parser.add_argument('-mo', "--momentum", type=float, default=0.1)
     parser.add_argument('-klw', "--kl_weight", type=float, default=0.0)
+
+    #SLCS
+    parser.add_argument('-dsn',"--data_select_name",default=None)
+    parser.add_argument('-ds',"--data_select_obj",default=None)
+
+
 
 
     args = parser.parse_args()

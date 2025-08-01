@@ -11,14 +11,16 @@
             "args": [
                 "-data", "MNIST",
                 "-m", "split_CNN",
-                "-algo", "FSL",
+                "-algo", "SLCS",
                 "-gr", "2000",
                 "-did", "0",
-                "-eg", "20"
+                "-eg", "20",
+                "-nc", "5",
+                "-dsn","keames"
             ]
         },
         {
-            "name": "Python: Run Controller Test",
+            "name": "Python: Run controllerbase.py Test",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/system/controller/test/controllerbase_test.py",
