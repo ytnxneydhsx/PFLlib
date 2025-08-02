@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Run main.py with System CWD",
+            "name": "main.py ",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/system/main.py",
@@ -10,7 +10,7 @@
             "cwd": "${workspaceFolder}/system", 
             "args": [
                 "-data", "MNIST",
-                "-m", "split_CNN",
+                "-m", "ResNet18",
                 "-algo", "SLCS",
                 "-gr", "2000",
                 "-did", "0",
@@ -24,6 +24,15 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/system/controller/test/controllerbase_test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/system", 
+            "args": []
+        }
+        {
+            "name": "Python: activate_ value_analysis test.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/system/activate_ value_analysis/test.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/system", 
             "args": []

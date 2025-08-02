@@ -57,11 +57,11 @@ from flcore.servers.serverslcs import slcs
 
 from flcore.trainmodel.models import *
 
-from flcore.trainmodel.bilstm import *
-from flcore.trainmodel.resnet import *
-from flcore.trainmodel.alexnet import *
-from flcore.trainmodel.mobilenet_v2 import *
-from flcore.trainmodel.transformer import *
+# from flcore.trainmodel.bilstm import *
+# from flcore.trainmodel.resnet import *
+# from flcore.trainmodel.alexnet import *
+# from flcore.trainmodel.mobilenet_v2 import *
+# from flcore.trainmodel.transformer import *
 
 from utils.result_utils import average_data
 from utils.mem_utils import MemReporter
@@ -118,7 +118,7 @@ def run(args):
 
         elif model_str=="ResNet18": # non-convex
             if "MNIST" in args.dataset:
-                args.model=ResNet18(BasicBlock,10).to(args.device)
+                args.model=ResNet18(ResBasicBlock,10).to(args.device)
 
         elif model_str == "DNN": # non-convex
             if "MNIST" in args.dataset:

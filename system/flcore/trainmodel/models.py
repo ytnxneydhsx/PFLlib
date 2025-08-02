@@ -699,11 +699,11 @@ class VGG16_cifar10(nn.Module):
 
 
 #---------------restnet18------------
-class BasicBlock(nn.Module):
+class ResBasicBlock(nn.Module):
     expansion = 1 # 基础块的输出通道是输入通道的 1 倍
 
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
+        super(ResBasicBlock, self).__init__()
         # 第一个 3x3 卷积层
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_channels)
@@ -778,13 +778,7 @@ class ResNet18(nn.Module):
 
         )
 
-        # 权重初始化 (可选，但推荐)
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+
 
     def _make_layer_sequential(self, block, in_channels_prev_stage, out_channels_stage, blocks, is_first_layer_in_stage, stride=1):
         """

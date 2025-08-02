@@ -5,6 +5,11 @@ from flcore.clients.clientslcs import clientslcs
 import torch.nn as nn
 from collections import OrderedDict
 import copy
+import numpy as np
+import logging
+from datetime import datetime
+import os
+
 
 
 
@@ -22,10 +27,63 @@ class slcs(Server):
         self.Budget = []
         # for client in self.clients:
         #     client.data_select_obj=args.data_select_obj(client.client_data)
-            # client.data_select_obj.select_data_clusters()
+        #     client.data_select_obj.select_data_clusters()
+        current_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        log_parent_dir = "logger"
+        log_filename = f'training_metrics_{current_date}.log'
+        log_save_path = os.path.join(log_parent_dir, log_filename)
+        logging.basicConfig(
+            filename=log_save_path,           # 使用包含日期的文件名
+            filemode='a',                    # 'a' 表示追加模式，不会覆盖旧文件
+            level=logging.INFO,              # 设置日志级别
+            format='%(message)s'             # 只记录日志消息本身
+        )
+
+        logger = logging.getLogger()
+        model_res="model_res"
+        self.new_dir_path = f"{model_res}/{current_date}"
+        os.makedirs( self.new_dir_path)
 
 
 
+    def split_evaluate(self,global_model, acc=None, loss=None):
+        #这个方法会命令所有客户端用它们各自的测试数据集来评估当前模型，并返回统计结果
+        stats = self.test_split_metrics(global_model)
+        #这个方法命令所有客户端返回它们在训练数据集上的损失统计信息
+        stats_train = self.train_split_metrics(global_model)
+        #sum(stats[2]): 所有客户端答对的题目总数。
+        #sum(stats[1]): 所有客户端的测试样本总数。
+        
+        test_acc = sum(stats[2])*1.0 / sum(stats[1])
+        test_auc = sum(stats[3])*1.0 / sum(stats[1])
+        train_loss = sum(stats_train[2])*1.0 / sum(stats_train[1])
+        accs = [a / n for a, n in zip(stats[2], stats[1])]
+        aucs = [a / n for a, n in zip(stats[3], stats[1])]
+        
+        if acc == None:
+            self.rs_test_acc.append(test_acc)
+        else:
+            acc.append(test_acc)
+        
+        if loss == None:
+            self.rs_train_loss.append(train_loss)
+        else:
+            loss.append(train_loss)
+
+        print("Averaged Train Loss: {:.4f}".format(train_loss))
+        print("Averaged Test Accuracy: {:.4f}".format(test_acc))
+        print("Averaged Test AUC: {:.4f}".format(test_auc))
+        # self.print_(test_acc, train_acc, train_loss)
+        print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
+        print("Std Test AUC: {:.4f}".format(np.std(aucs)))    
+
+        logger = logging.getLogger(__name__)
+        logger.info("--------------------------------------------------")
+        logger.info(f"Averaged Train Loss: {train_loss:.4f}")
+        logger.info(f"Averaged Test Accuracy: {test_acc:.4f}")
+        logger.info(f"Averaged Test AUC: {test_auc:.4f}")
+        logger.info(f"Std Test Accuracy: {np.std(accs):.4f}")
+        logger.info(f"Std Test AUC: {np.std(aucs):.4f}")
 
 
     
@@ -53,12 +111,28 @@ class slcs(Server):
             copy.deepcopy(self.down_model),
             copy.deepcopy(self.up_model)
             )
-            if i%10 == 0:
-                model_name = f"ResNet_SL_round_{i}.pt"
-                torch.save(self.global_model.state_dict(), model_name)
-                print(f"模型已保存为: {model_name}") 
+            # 2. 创建一个新的状态字典，移除 nn.Sequential 的前缀
+            new_state_dict = {}
+            for key, value in self.global_model.state_dict().items():
+                # 键名示例：'0.conv1.0.weight'
+                # 我们需要将其转换为 'conv1.0.weight'
+                # 寻找第一个 '.'
+                parts = key.split('.', 1)
+                if len(parts) > 1:
+                    new_key = parts[1]
+                    new_state_dict[new_key] = value
+                else:
+                    new_state_dict[key] = value
 
-            
+            if i%5 == 0:
+                print("当前轮次为"+str(i))
+                model_name = f"{self.args.algorithm}_{self.args.dataset}_ResNet18_round_{i}.pt"
+                model_name = os.path.join( self.new_dir_path, model_name)
+                torch.save(new_state_dict, model_name)
+                print(f"模型已保存为: {model_name}") 
+                logger = logging.getLogger(__name__)
+                logger.info(f"模型已保存为: {model_name}")
+
         print("\nBest accuracy.")
         # self.print_(max(self.rs_test_acc), max(
         #     self.rs_train_acc), min(self.rs_train_loss))
