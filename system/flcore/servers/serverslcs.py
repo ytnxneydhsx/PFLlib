@@ -28,20 +28,11 @@ class slcs(Server):
         # for client in self.clients:
         #     client.data_select_obj=args.data_select_obj(client.client_data)
         #     client.data_select_obj.select_data_clusters()
-        current_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        log_parent_dir = "logger"
-        log_filename = f'training_metrics_{current_date}.log'
-        log_save_path = os.path.join(log_parent_dir, log_filename)
-        logging.basicConfig(
-            filename=log_save_path,           # 使用包含日期的文件名
-            filemode='a',                    # 'a' 表示追加模式，不会覆盖旧文件
-            level=logging.INFO,              # 设置日志级别
-            format='%(message)s'             # 只记录日志消息本身
-        )
 
-        logger = logging.getLogger()
+        self.cucurrent_date=args.current_date
+        logger = logging.getLogger(__name__)
         model_res="model_res"
-        self.new_dir_path = f"{model_res}/{current_date}"
+        self.new_dir_path = f"{model_res}/{self.cucurrent_date}"
         os.makedirs( self.new_dir_path)
 
 
@@ -124,9 +115,9 @@ class slcs(Server):
                 else:
                     new_state_dict[key] = value
 
-            if i%5 == 0:
+            if i%1 == 0:
                 print("当前轮次为"+str(i))
-                model_name = f"{self.args.algorithm}_{self.args.dataset}_ResNet18_round_{i}.pt"
+                model_name = f"{self.args.algorithm}_{self.args.dataset}_{self.args.model_str}_{i}.pt"
                 model_name = os.path.join( self.new_dir_path, model_name)
                 torch.save(new_state_dict, model_name)
                 print(f"模型已保存为: {model_name}") 

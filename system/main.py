@@ -11,6 +11,7 @@ import warnings
 import numpy as np
 import torchvision
 import logging
+from datetime import datetime
 
 from flcore.servers.serveravg import FedAvg
 from flcore.servers.serverpFedMe import pFedMe
@@ -70,19 +71,19 @@ from data_select.datakmeans import  datakmeans
 
 
 
-logger = logging.getLogger()
-logger.setLevel(logging.ERROR)
+
 
 warnings.simplefilter("ignore")
 torch.manual_seed(0)
 
 
 def run(args):
-
+    logger = logging.getLogger(__name__)
     time_list = []
     reporter = MemReporter()
     model_str = args.model
 #i默认为1
+
     for i in range(args.prev, args.times):
         print(f"\n============= Running time: {i}th =============")
         print("Creating server and clients ...")
@@ -199,7 +200,11 @@ def run(args):
         else:
             raise NotImplementedError
 
+        
+
         print(args.model)
+        logger.info(args.model)
+
 
         # select algorithm
         if args.algorithm == "FedAvg":
@@ -401,6 +406,7 @@ def run(args):
         time_list.append(time.time()-start)
 
     print(f"\nAverage time cost: {round(np.average(time_list), 2)}s.")
+    logger.info(f"\nAverage time cost: {round(np.average(time_list), 2)}s.")
     
 
     # Global average
@@ -535,11 +541,25 @@ if __name__ == "__main__":
     if args.device == "cuda" and not torch.cuda.is_available():
         print("\ncuda is not avaiable.\n")
         args.device = "cpu"
+    args.model_str=args.model
+    args.current_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    log_parent_dir = "logger"
+    log_filename = f'{args.model_str}_{args.dataset}_{args.current_date}.log'
+    log_save_path = os.path.join(log_parent_dir, log_filename)
+    logging.basicConfig(
+            filename=log_save_path,           # 使用包含日期的文件名
+            filemode='a',                    # 'a' 表示追加模式，不会覆盖旧文件
+            level=logging.INFO,              # 设置日志级别
+            format='%(message)s'             # 只记录日志消息本身
+        )
+    logging.getLogger(__name__)
 
     print("=" * 50)
     for arg in vars(args):
         print(arg, '=',getattr(args, arg))
+        logging.info(f"{arg} = {getattr(args, arg)}")
     print("=" * 50)
+    logging.info("=" * 50)
 
     # with torch.profiler.profile(
     #     activities=[
