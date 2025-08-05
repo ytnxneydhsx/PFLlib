@@ -8,14 +8,13 @@ import torchvision.transforms as transforms
 from utils.dataset_utils import check, separate_data, split_data, save_file
 
 
-random.seed(1)
-np.random.seed(1)
-num_clients = 5
-dir_path = "MNIST/"
+
+
+
 
 
 # Allocate data to users
-def generate_dataset(dir_path, num_clients, niid, balance, partition):
+def generate_dataset(dir_path, num_clients, niid, balance, partition,alpha):
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
         
@@ -24,7 +23,7 @@ def generate_dataset(dir_path, num_clients, niid, balance, partition):
     train_path = dir_path + "train/"
     test_path = dir_path + "test/"
 
-    if check(config_path, train_path, test_path, num_clients, niid, balance, partition):
+    if check(config_path, train_path, test_path, num_clients,alpha, niid, balance, partition):
         return
 
     # # FIX HTTP Error 403: Forbidden
@@ -68,19 +67,60 @@ def generate_dataset(dir_path, num_clients, niid, balance, partition):
     #     idx = dataset_label == i
     #     dataset.append(dataset_image[idx])
 
-    X, y, statistic = separate_data((dataset_image, dataset_label), num_clients, num_classes, 
+    X, y, statistic = separate_data((dataset_image, dataset_label), num_clients, num_classes, alpha,
                                     niid, balance, partition, class_per_client=2)
     train_data, test_data = split_data(X, y)
-    save_file(config_path, train_path, test_path, train_data, test_data, num_clients, num_classes, 
+    save_file(config_path, train_path, test_path, train_data, test_data, num_clients, num_classes, alpha,
         statistic, niid, balance, partition)
 
 
-if __name__ == "__main__":
-    # niid = True if sys.argv[1] == "noniid" else False
-    # balance = True if sys.argv[2] == "balance" else False
-    # partition = sys.argv[3] if sys.argv[3] != "-" else None
-    niid=True
-    balance=True
-    partition="pat"
+def run_data_MNIST_generation(config):
+    """
+    这个函数是模块的接口，它从传入的config对象中获取所有需要的配置，
+    然后调用核心工作函数 generate_dataset。
+    """
+    print("\n--- [Module 1] 开始执行数据生成 ---")
+    # random.seed(1)
+    # np.random.seed(1)
+    # num_clients = 5
+    # dir_path = "MNIST/"
 
-    generate_dataset(dir_path, num_clients, niid, balance, partition)
+    # 1. 从传入的 config 对象中读取所有配置
+    #    使用 .getint(), .getboolean() 来自动转换类型
+    section = 'MNIST_DATA_GENERATION'
+    dir_path = config.get(section, 'dir_path')
+    num_clients = config.getint(section, 'num_clients')
+    niid = config.getboolean(section, 'niid')
+    balance = config.getboolean(section, 'balance')
+    partition = config.get(section, 'partition')
+    seed = config.getint(section, 'random_seed')
+    alpha= config.getfloat(section, 'alpha')
+
+    # 2. 使用配置来设置环境，例如随机种子
+    random.seed(seed)
+    np.random.seed(seed)
+
+    # 3. 调用核心工作函数，传入从配置中读取的值
+    generate_dataset(dir_path, num_clients, niid, balance, partition,alpha)
+
+
+
+
+
+
+
+
+
+
+# if __name__ == "__main__":
+#     # niid = True if sys.argv[1] == "noniid" else False
+#     # balance = True if sys.argv[2] == "balance" else False
+#     # partition = sys.argv[3] if sys.argv[3] != "-" else None
+#     niid=True
+#     balance=True
+#     partition="dir"
+
+#     parser = argparse.ArgumentParser(description="脚本1的处理程序。")
+
+
+#     generate_dataset(dir_path, num_clients, niid, balance, partition)

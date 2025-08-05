@@ -9,9 +9,9 @@ from PIL import Image
 
 batch_size = 100
 train_ratio = 0.83333 # merge original training set and test set, then split it manually. 
-alpha = 0.1 # for Dirichlet distribution. 100 for exdir
+# alpha = 0.5 # for Dirichlet distribution. 100 for exdir
 
-def check(config_path, train_path, test_path, num_clients, niid=False, 
+def check(config_path, train_path, test_path, num_clients,alpha, niid=False, 
         balance=True, partition=None):
     # check existing dataset
     if os.path.exists(config_path):
@@ -35,7 +35,7 @@ def check(config_path, train_path, test_path, num_clients, niid=False,
 
     return False
 
-def separate_data(data, num_clients, num_classes, niid=False, balance=False, partition=None, class_per_client=None):
+def separate_data(data, num_clients, num_classes,alpha, niid=False, balance=False, partition=None, class_per_client=None):
     X = [[] for _ in range(num_clients)]
     y = [[] for _ in range(num_clients)]
     statistic = [[] for _ in range(num_clients)]
@@ -231,7 +231,7 @@ def split_data(X, y):
     return train_data, test_data
 
 def save_file(config_path, train_path, test_path, train_data, test_data, num_clients, 
-                num_classes, statistic, niid=False, balance=True, partition=None):
+                num_classes, alpha,statistic, niid=False, balance=True, partition=None):
     config = {
         'num_clients': num_clients, 
         'num_classes': num_classes, 

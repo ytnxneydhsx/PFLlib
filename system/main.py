@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 import matplotlib
 matplotlib.use('Agg')
-
+import configparser
 import copy
 import torch
 import argparse
 import os
+import sys
 import time
 import warnings
 import numpy as np
@@ -530,11 +531,59 @@ if __name__ == "__main__":
     #SLCS
     parser.add_argument('-dsn',"--data_select_name",default=None)
     parser.add_argument('-ds',"--data_select_obj",default=None)
+    parser.add_argument('-pro', '--profile', type=str, default=None)
+    parser.add_argument('-data_alpha', '--data_alpha', type=float, default=None)
+    parser.add_argument('-niid', '--niid', type=bool, default=None)
+    parser.add_argument('-balance', '--balance', type=bool, default=None)
+    parser.add_argument('-partition', '--partition', type=str, default=None)
 
 
 
 
     args = parser.parse_args()
+
+ # 3. 读取 INI 文件并根据 profile 覆盖 args 中的值
+    if args.profile:
+        print(f"检测到 profile: [{args.profile}]，将从 config.ini 加载并覆盖参数...")
+        config = configparser.ConfigParser()
+        config.read('config.ini', encoding='utf-8')
+
+        # 检查指定的profile是否存在于INI文件中
+        if args.profile not in config:
+            print(f"错误: 在 config.ini 中未找到名为 '{args.profile}' 的配置区块!")
+            sys.exit(1)
+        for key, value in config.items(args.profile):
+            # 检查解析后的 args 是否有这个属性
+            if hasattr(args, key):
+                try:
+
+                    arg_type = parser._get_action_from_name(key).type or str
+                except (AttributeError, KeyError):
+
+                    default_val = parser.get_default(key)
+                    arg_type = type(default_val) if default_val is not None else str
+
+                try:
+                    if arg_type == bool:
+
+                        converted_value = config.getboolean(args.profile, key)
+                    elif value.lower() == 'none': 
+                        converted_value = None
+                    else:
+
+                        converted_value = arg_type(value)
+                    
+                    # 使用 setattr 更新 args 对象的值
+                    setattr(args, key, converted_value)
+
+                except (ValueError, TypeError) as e:
+                    print(f"警告：无法将INI中的值 '{value}' 转换为 {arg_type} 类型 (键: {key})。错误: {e}")
+    else:
+        print("未指定 --profile，将仅使用命令行参数或代码中的默认值。")
+
+
+
+
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
 
@@ -544,7 +593,7 @@ if __name__ == "__main__":
     args.model_str=args.model
     args.current_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     log_parent_dir = "logger"
-    log_filename = f'{args.model_str}_{args.dataset}_{args.current_date}.log'
+    log_filename = f'{args.algorithm}_{args.model_str}_{args.dataset}_{args.current_date}.log'
     log_save_path = os.path.join(log_parent_dir, log_filename)
     logging.basicConfig(
             filename=log_save_path,           # 使用包含日期的文件名
@@ -560,6 +609,7 @@ if __name__ == "__main__":
         logging.info(f"{arg} = {getattr(args, arg)}")
     print("=" * 50)
     logging.info("=" * 50)
+    run(args)
 
     # with torch.profiler.profile(
     #     activities=[
@@ -569,7 +619,7 @@ if __name__ == "__main__":
     #     on_trace_ready=torch.profiler.tensorboard_trace_handler('./log')
     #     ) as prof:
     # with torch.autograd.profiler.profile(profile_memory=True) as prof:
-    run(args)
+
 
     
     # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=20))
