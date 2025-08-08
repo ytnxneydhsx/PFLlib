@@ -69,7 +69,7 @@ from utils.result_utils import average_data
 from utils.mem_utils import MemReporter
 
 from data_select.datakmeans import  datakmeans
-
+from data_select.datacenteragg import  datacenteragg
 
 
 
@@ -197,6 +197,9 @@ def run(args):
             elif args.dataset == 'PAMAP2':
                 args.model = HARCNN(9, dim_hidden=3712, num_classes=args.num_classes, conv_kernel_size=(1, 9), 
                                     pool_kernel_size=(1, 2)).to(args.device)
+        elif model_str == "VGG16":
+            if args.dataset == 'Cifar10':
+                args.model=VGG16_cifar10().to(args.device)
 
         else:
             raise NotImplementedError
@@ -396,9 +399,9 @@ def run(args):
         elif args.algorithm == "SLCS":
             if args.data_select_name=='keames':
                 args.data_select_obj=datakmeans
+            elif args.data_select_name=='centeragg':
+                args.data_select_obj=datacenteragg
             server = slcs(args, i,2)
-
-        
         else:
             raise NotImplementedError
 

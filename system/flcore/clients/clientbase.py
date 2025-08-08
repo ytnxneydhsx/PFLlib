@@ -51,6 +51,8 @@ class Client(object):
         )
         self.learning_rate_decay = args.learning_rate_decay
 
+        self.args= args
+
 
     def load_train_data(self, batch_size=None):
         if batch_size == None:

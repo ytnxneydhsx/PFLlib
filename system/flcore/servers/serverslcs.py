@@ -9,7 +9,7 @@ import numpy as np
 import logging
 from datetime import datetime
 import os
-
+from collections import defaultdict
 
 
 
@@ -28,12 +28,13 @@ class slcs(Server):
         # for client in self.clients:
         #     client.data_select_obj=args.data_select_obj(client.client_data)
         #     client.data_select_obj.select_data_clusters()
-
-        self.cucurrent_date=args.current_date
+        self.current_date=args.current_date
         logger = logging.getLogger(__name__)
         model_res="model_res"
-        self.new_dir_path = f"{model_res}/{self.cucurrent_date}"
+        self.new_dir_path = f"{model_res}/{self.current_date}"
         os.makedirs( self.new_dir_path)
+        self.all_centers_list = []
+        self.global_centers=None
 
 
 
@@ -44,7 +45,6 @@ class slcs(Server):
         stats_train = self.train_split_metrics(global_model)
         #sum(stats[2]): 所有客户端答对的题目总数。
         #sum(stats[1]): 所有客户端的测试样本总数。
-        
         test_acc = sum(stats[2])*1.0 / sum(stats[1])
         test_auc = sum(stats[3])*1.0 / sum(stats[1])
         train_loss = sum(stats_train[2])*1.0 / sum(stats_train[1])
@@ -77,7 +77,19 @@ class slcs(Server):
         logger.info(f"Std Test AUC: {np.std(aucs):.4f}")
 
 
-    
+    def aggregate_and_average_centers(self):
+        aggregated_tensors = defaultdict(list)
+        for client_center_dict in self.all_centers_list:
+            for label, tensor_list in client_center_dict.items():
+                aggregated_tensors[label].extend(tensor_list)
+        averaged_results = {}
+        for label, all_centers_list in aggregated_tensors.items():
+            if not all_centers_list:
+                continue
+            stacked_tensors = torch.stack(all_centers_list, dim=0)
+            averaged_results[label] = torch.mean(stacked_tensors, dim=0)
+        self.global_centers = averaged_results
+        print("全局中心聚合完成！")
 
     def train(self):
         for i in range(self.global_rounds+1):
@@ -88,11 +100,35 @@ class slcs(Server):
             if i%self.eval_gap == 0:
                 print(f"\n-------------Round number: {i}-------------")
                 print("\nEvaluate global model")
-                self.split_evaluate(self.global_model)
+                # self.split_evaluate(self.global_model)
             for client in self.selected_clients:
                 (self.up_model,self.down_model)=client.split_train(self.up_model)
                 self.send_split_models(self.down_model)
             #本轮花费时间
+            #### 全局聚合阶段
+            if i==0:
+                print("开始全局聚合")
+                for client in self.selected_clients:
+                    client.client_get_data_select(self.data_select_obj)
+                    self.all_centers_list.append(client.data_select_obj.clustered_original_center_sum)
+                    
+
+                self.aggregate_and_average_centers()
+
+                for client in self.selected_clients:
+                    client.data_select_obj.global_center_coordinates=self.global_centers
+                    client.data_select_obj.get_data_distance_value()
+                    client.data_select_obj.clusters_data_sort()
+                    client.data_select_obj.clusters_data_sort()
+                    client.Pruning_mata_data=client.data_select_obj.Pruning_data(client.client_data)
+                
+
+                    
+                    
+                    
+
+
+
             self.Budget.append(time.time() - s_t)
             print('-'*25, 'time cost', '-'*25, self.Budget[-1])
 
@@ -123,14 +159,11 @@ class slcs(Server):
                 print(f"模型已保存为: {model_name}") 
                 logger = logging.getLogger(__name__)
                 logger.info(f"模型已保存为: {model_name}")
-
         print("\nBest accuracy.")
         # self.print_(max(self.rs_test_acc), max(
         #     self.rs_train_acc), min(self.rs_train_loss))
         print(max(self.rs_test_acc))
         print("\nAverage time cost per round.")
         print(sum(self.Budget[1:])/len(self.Budget[1:]))
-
-
         # self.save_results()
         # self.save_global_model()
