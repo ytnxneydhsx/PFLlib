@@ -414,7 +414,7 @@ def run(args):
     
 
     # Global average
-    average_data(dataset=args.dataset, algorithm=args.algorithm, goal=args.goal, times=args.times)
+    # average_data(dataset=args.dataset, algorithm=args.algorithm, goal=args.goal, times=args.times)
 
     print("All done!")
 
@@ -539,6 +539,10 @@ if __name__ == "__main__":
     parser.add_argument('-niid', '--niid', type=bool, default=None)
     parser.add_argument('-balance', '--balance', type=bool, default=None)
     parser.add_argument('-partition', '--partition', type=str, default=None)
+    parser.add_argument('-dsr', '--data_select_round', type=int, default=4000)
+    parser.add_argument('-dpr', '--data_Pruning_rate', type=float, default=0.8)
+    parser.add_argument('-smc', '--split_model_cnt', type=int, default=2)
+    parser.add_argument('-hln', '--hook_layer_name', type=str, default=None)
 
 
 

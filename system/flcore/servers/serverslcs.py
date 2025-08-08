@@ -31,7 +31,7 @@ class slcs(Server):
         self.current_date=args.current_date
         logger = logging.getLogger(__name__)
         model_res="model_res"
-        self.new_dir_path = f"{model_res}/{self.current_date}"
+        self.new_dir_path = f"{model_res}/{args.algorithm}_{args.model_str}_{args.dataset}_{args.current_date}_{self.current_date}"
         os.makedirs( self.new_dir_path)
         self.all_centers_list = []
         self.global_centers=None
@@ -106,8 +106,9 @@ class slcs(Server):
                 self.send_split_models(self.down_model)
             #本轮花费时间
             #### 全局聚合阶段
-            if self.args.data_select_round==0:
+            if self.args.data_select_round==i:
                 print("开始全局聚合")
+                logger.info("开始全局聚合")
                 for client in self.selected_clients:
                     client.client_get_data_select(self.data_select_obj)
                     self.all_centers_list.append(client.data_select_obj.center_coordinates)
@@ -117,13 +118,6 @@ class slcs(Server):
                     client.data_select_obj.global_center_coordinates=self.global_centers
                     client.data_select_obj.Per_Pruning_data()
                     client.Pruning_mata_data=client.data_select_obj.Pruning_data(client.client_data)
-                
-
-                    
-                    
-                    
-
-
 
             self.Budget.append(time.time() - s_t)
             print('-'*25, 'time cost', '-'*25, self.Budget[-1])
