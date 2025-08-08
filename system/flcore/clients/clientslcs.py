@@ -38,6 +38,7 @@ class clientslcs(Client):
         self.data_select_obj = None
         self.activations_sum={}
         self.Pruning_mata_data=None
+        self.hook_layer_name=args.hook_layer_name
 
     def load_train_index_data(self, batch_size=None):
         if batch_size is None:
@@ -70,7 +71,7 @@ class clientslcs(Client):
         
         self.model.train()
         up_model.train() 
-        up_optimizer = torch.optim.SGD(up_model.parameters(), lr=self.learning_rate)
+        up_optimizer = torch.optim.SGD(up_model.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=5e-4)
         
         start_time = time.time()
 
@@ -80,8 +81,7 @@ class clientslcs(Client):
         
         for epoch in range(max_local_epochs):
             for i, (x, y,index) in enumerate(trainloader):
-                
-                handle = up_model.conv5_res.register_forward_hook(self.get_activation(index, y))
+                handle = getattr(up_model, self.hook_layer_name).register_forward_hook(self.get_activation(index, y))
                 if type(x) == type([]):
                     x[0] = x[0].to(self.device)
                 else:
@@ -113,7 +113,7 @@ class clientslcs(Client):
     
     def client_get_data_select(self,data_select_obj):
         if self.data_select_obj == None:
-            self.data_select_obj = data_select_obj(self.activations_sum)
+            self.data_select_obj = data_select_obj(self.activations_sum,self.args.data_Pruning_rate)
         else:
             pass
 

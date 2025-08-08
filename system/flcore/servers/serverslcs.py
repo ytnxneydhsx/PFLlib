@@ -100,26 +100,22 @@ class slcs(Server):
             if i%self.eval_gap == 0:
                 print(f"\n-------------Round number: {i}-------------")
                 print("\nEvaluate global model")
-                # self.split_evaluate(self.global_model)
+                self.split_evaluate(self.global_model)
             for client in self.selected_clients:
                 (self.up_model,self.down_model)=client.split_train(self.up_model)
                 self.send_split_models(self.down_model)
             #本轮花费时间
             #### 全局聚合阶段
-            if i==0:
+            if self.args.data_select_round==0:
                 print("开始全局聚合")
                 for client in self.selected_clients:
                     client.client_get_data_select(self.data_select_obj)
-                    self.all_centers_list.append(client.data_select_obj.clustered_original_center_sum)
-                    
-
+                    self.all_centers_list.append(client.data_select_obj.center_coordinates)
                 self.aggregate_and_average_centers()
 
                 for client in self.selected_clients:
                     client.data_select_obj.global_center_coordinates=self.global_centers
-                    client.data_select_obj.get_data_distance_value()
-                    client.data_select_obj.clusters_data_sort()
-                    client.data_select_obj.clusters_data_sort()
+                    client.data_select_obj.Per_Pruning_data()
                     client.Pruning_mata_data=client.data_select_obj.Pruning_data(client.client_data)
                 
 

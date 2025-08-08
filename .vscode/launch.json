@@ -9,14 +9,10 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/system", 
             "args": [
-                "-data", "MNIST",
-                "-m", "ResNet18",
-                "-algo", "SLCS",
-                "-gr", "2000",
-                "-did", "0",
-                "-eg", "20",
-                "-nc", "5",
-                "-dsn","keames"
+                "-pro", "SLCS_ResNet18_MNIST",
+
+                
+
             ]
         },
         {
