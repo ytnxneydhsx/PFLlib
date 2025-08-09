@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/system", 
             "args": [
-                "-pro", "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.9",
+                "-pro", "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.1",
 
                 
 

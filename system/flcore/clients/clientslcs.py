@@ -113,16 +113,12 @@ class clientslcs(Client):
     
     def client_get_data_select(self,data_select_obj):
         if self.data_select_obj == None:
-            self.data_select_obj = data_select_obj(self.activations_sum,self.args.data_Pruning_rate)
+            self.data_select_obj = data_select_obj(self.activations_sum,self.args.data_pruning_rate)
         else:
             pass
 
 
             
-
-
-
-
 
 
 

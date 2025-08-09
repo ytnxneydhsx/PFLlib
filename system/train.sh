@@ -1,41 +1,65 @@
 #!/bin/bash
 
-# 加载 Conda 初始化脚本
-# 找到你的 Conda 根目录，例如：/home/huangnv_dl/miniconda3
-# 然后将下面的路径替换成你自己的 Conda 安装路径
-CONDA_BASE=$(conda info --base)
-source "$CONDA_BASE/etc/profile.d/conda.sh"
+# 获取 Conda 根目录，并加载初始化脚本
+# 根据你的 'which conda' 输出，你的 Conda 根目录是 /home/yons/anaconda3
+source /home/yons/anaconda3/etc/profile.d/conda.sh
 
 # 激活你的 Conda 环境
-conda activate pfllib
+conda activate tjl_fl
 
 # 检查环境是否激活成功
-if [ "$CONDA_DEFAULT_ENV" != "pfllib" ]; then
-    echo "Error: Failed to activate Conda environment 'pfllib'."
+if [ "$CONDA_DEFAULT_ENV" != "tjl_fl" ]; then
+    echo "Error: Failed to activate Conda environment 'tjl_fl'."
     exit 1
 fi
 
 # 定义要运行的 Python 脚本
 PYTHON_SCRIPT="main.py"
 
-# 定义两个不同的配置名称
-CONFIG1="SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.9"
-CONFIG2="SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.8"
+# 定义所有配置名称
+CONFIGS=(
+    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.9"
+    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.8"
+    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.7"
+    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.6"
+    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.5"
+    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.4"
+    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.3"
+    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.2"
+    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.1"
+)
 
-echo "Starting job with config: $CONFIG1"
-# 使用 & 符号在后台运行第一个任务，并将输出重定向到日志文件
-python "$PYTHON_SCRIPT" -pro "$CONFIG1" > job1.log 2>&1 &
+# 每批次运行的任务数量
+BATCH_SIZE=3
 
-# 暂停 1 秒
-sleep 5
+# 循环遍历所有配置，每批次启动3个任务
+for ((i=0; i<${#CONFIGS[@]}; i+=BATCH_SIZE))
+do
+    echo "--- Starting a new batch of jobs ---"
 
-echo "Starting job with config: $CONFIG2"
-# 使用 & 符号在后台运行第二个任务，并将输出重定向到另一个日志文件
-python "$PYTHON_SCRIPT" -pro "$CONFIG2" > job2.log 2>&1 &
+    # 启动当前批次的任务
+    for ((j=0; j<BATCH_SIZE; j++))
+    do
+        # 检查数组索引是否越界
+        if ((i+j < ${#CONFIGS[@]}))
+        then
+            config_name=${CONFIGS[i+j]}
+            log_file="job_${config_name}.log"
+            
+            echo "Starting job with config: $config_name"
+            python "$PYTHON_SCRIPT" -pro "$config_name" > "$log_file" 2>&1 &
 
-echo "All jobs started. Check job1.log and job2.log for output."
+            # 在启动下一个任务前，等待5秒
+            sleep 5
+        fi
+    done
+    
+    echo "All jobs in the current batch started. Waiting for them to finish..."
+    
+    # 等待当前批次的所有后台任务完成
+    wait
 
-# 等待所有后台任务完成
-wait
+    echo "All jobs in the current batch finished."
+done
 
-echo "All jobs finished."
+echo "--- All jobs finished ---"
