@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/system", 
             "args": [
-                "-pro", "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.1",
+                "-pro", "SL_VGG16_Cifar10_alpha_1",
 
                 
 
@@ -23,7 +23,7 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/system", 
             "args": []
-        }
+        },
         {
             "name": "Python: activate_ value_analysis test.py",
             "type": "python",
@@ -32,6 +32,16 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/system", 
             "args": []
+        },
+        {
+            "name": "channel_importance_analysis",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/system/Channel_Importance_Analysis/test.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/system", 
+            "args": ["-pro", "Channel_Importance_Analysis",]
         }
+
     ]
 }

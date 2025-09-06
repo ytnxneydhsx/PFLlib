@@ -30,7 +30,7 @@ class clientsl(Client):
         
         self.model.train()
         up_model.train() 
-        up_optimizer = torch.optim.SGD(up_model.parameters(), lr=self.learning_rate)
+        up_optimizer = torch.optim.SGD(up_model.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=5e-4)
         
         start_time = time.time()
 
