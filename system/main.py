@@ -56,6 +56,7 @@ from flcore.servers.serveras import FedAS
 from flcore.servers.serversl import sl
 from flcore.servers.serverfsl import fsl
 from flcore.servers.serverslcs import slcs
+from flcore.servers.serverslcdacp import slcdacp
 
 from flcore.trainmodel.models import *
 
@@ -402,6 +403,9 @@ def run(args):
             elif args.data_select_name=='centeragg':
                 args.data_select_obj=datacenteragg
             server = slcs(args, i,2)
+
+        elif args.algorithm == "SLCDACP":
+            server =slcdacp (args, i,args.split_model_cnt)
         else:
             raise NotImplementedError
 
@@ -536,13 +540,17 @@ if __name__ == "__main__":
     parser.add_argument('-ds',"--data_select_obj",default=None)
     parser.add_argument('-pro', '--profile', type=str, default=None)
     parser.add_argument('-data_alpha', '--data_alpha', type=float, default=None)
-    parser.add_argument('-niid', '--niid', type=bool, default=None)
+    parser.add_argument('-niid', '--niid', type=bool, default=False)
     parser.add_argument('-balance', '--balance', type=bool, default=None)
     parser.add_argument('-partition', '--partition', type=str, default=None)
     parser.add_argument('-dsr', '--data_select_round', type=int, default=4000)
     parser.add_argument('-dpr', '--data_pruning_rate', type=float, default=0.8)
     parser.add_argument('-smc', '--split_model_cnt', type=int, default=2)
     parser.add_argument('-hln', '--hook_layer_name', type=str, default=None)
+    parser.add_argument('-p_min', '--purning_min', type=float, default=0.1)
+    parser.add_argument('-p_base', '--purning_base', type=float, default=0.2)
+    parser.add_argument('-p_max', '--purning_max', type=float, default=0.3)
+
 
 
 

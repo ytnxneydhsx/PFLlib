@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/system", 
             "args": [
-                "-pro", "SL_VGG16_Cifar10_alpha_1",
+                "-pro", "SLCDACP_VGG16_Cifar10_0.1_0.2_0.3",
 
                 
 
