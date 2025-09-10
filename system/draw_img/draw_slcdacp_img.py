@@ -9,22 +9,25 @@ import shutil
 matplotlib.use('Agg')
 current_dir = os.getcwd()
 sys.path.append(current_dir)
-
-class draw_acc_img(drawbase):
+class draw_slcdacp(drawbase):
     def __init__(self, log_filename=None):
         super().__init__(log_filename)
         self.log_filename = log_filename
-        self.hook_layer_name = None
-        self.data_pruning_rate = None
-        self.data_select_round = None
+        self.purning_min=None
+        self.purning_base=None
+        self.purning_max=None
         self._load_parameters_from_logger()
-        
+
+
         # 仅当成功解析到属性时才构建目录
         if self.base_name and self.algorithm and self.model_str and self.dataset:
             alpha_str = f"alpha_{self.alpha}" if self.alpha is not None else "alpha_N-A"
-            pruning_rate_str = f"data_pruning_rate_{self.data_pruning_rate}" if self.data_pruning_rate is not None else "pruning_rate_N-A"
-            select_round_str = f"data_select_round_{self.data_select_round}" if self.data_select_round is not None else "select_round_N-A"
             time_str = f"time_{self.time}" if self.time is not None else "time_N-A"
+            purning_min_str = f"purning_min_{self.purning_min}" if self.purning_min is not None else "purning_min_N-A"
+            purning_base_str = f"purning_base_{self.purning_base}" if self.purning_base is not None else "purning_base_N-A"
+            purning_max_str = f"purning_max_{self.purning_max}" if self.purning_max is not None else "purning_max_N-A"
+
+
 
             self.output_dir = os.path.join(
                 self.root_path,
@@ -32,8 +35,9 @@ class draw_acc_img(drawbase):
                 self.model_str,
                 self.dataset,
                 alpha_str,
-                pruning_rate_str,
-                select_round_str,
+                purning_min_str,
+                purning_base_str,
+                purning_max_str,
                 time_str
             )
             # 由于 time 字符串中可能包含冒号，需要额外处理
@@ -41,7 +45,6 @@ class draw_acc_img(drawbase):
             # 将 'time:2025-08-09_12-16-52' 变为 'time_2025-08-09_12-16-52'
             # 还需要将时间中的冒号 '-' 替换为下划线
             self.output_dir = self.output_dir.replace(':', '_')
-            
             os.makedirs(self.output_dir, exist_ok=True)
             print(f"输出目录已准备好: '{self.output_dir}'")
         else:
@@ -57,10 +60,8 @@ class draw_acc_img(drawbase):
         output_image_name = f"{self.base_name}.jpg"
         full_output_path = os.path.join(self.output_dir, output_image_name)
         print(f"正在从 '{full_log_path}' 读取数据并生成图表...")
-        
         accuracies = []
         accuracy_pattern = re.compile(r"Averaged Test Accuracy: (\d+\.\d+)")
-
         try:
             with open(full_log_path, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -83,29 +84,27 @@ class draw_acc_img(drawbase):
         title_str = f"{self.base_name}"
         if self.alpha is not None:
             title_str += f"_alpha:{self.alpha}"
-        if self.data_pruning_rate is not None:
-            title_str += f"_pruning_rate:{self.data_pruning_rate}"
-        if self.data_select_round is not None:
-            title_str += f"_select_round:{self.data_select_round}"
+        if self.purning_min is not None:
+            title_str += f"_pruning_rate:{self.purning_min}"
+        if self.purning_base is not None:
+            title_str += f"_pruning_rate:{self.purning_base}"
+        if self.purning_max is not None:
+            title_str += f"_pruning_rate:{self.purning_max}"
         plt.title(title_str)
         
         plt.xlabel('Epoch')
         plt.ylabel('Averaged Test Accuracy')
         plt.grid(True)
         plt.tight_layout()
-        
         os.makedirs(os.path.dirname(full_output_path), exist_ok=True)
         plt.savefig(full_output_path)
         print(f"图表已成功生成并保存为: '{full_output_path}'")
         plt.close()
 
-    # --- 以下是改造后的函数 ---
+
     def draw_acc_and_place_in_folder(self):
-        """
-        扫描 'system/logger' 目录，仅针对以 'SLCS' 开头的 .log 文件，
-        为其生成图片，并将其和日志文件一起移动到指定的、结构化的新文件夹中。
-        """
-        print("--- 开始扫描并处理所有以 'SLCS' 开头的日志文件和图片 ---")
+
+        print("--- 开始扫描并处理所有以 'SLCDACP' 开头的日志文件和图片 ---")
         if not os.path.exists(self.root_path):
             print(f"错误：日志根目录 '{self.root_path}' 不存在。")
             return
@@ -113,11 +112,11 @@ class draw_acc_img(drawbase):
         for filename in os.listdir(self.root_path):
             # --- 关键改动在这里 ---
             # 增加一个条件，确保只处理以 'SLCS' 开头的 .log 文件
-            if filename.endswith(".log") and filename.startswith("SLCS"):
+            if filename.endswith(".log") and filename.startswith("SLCDACP"):
                 try:
                     print(f"\n>>> 正在处理文件: {filename}")
                     # 创建一个新实例来生成图片和目录结构
-                    drawer = draw_acc_img(filename)
+                    drawer = draw_slcdacp(filename)
                     
                     # 检查drawer是否成功创建了output_dir
                     if not drawer.output_dir:
@@ -168,30 +167,28 @@ class draw_acc_img(drawbase):
                 content = f.read()
 
             params = {
-                'data_pruning_rate': r'data_pruning_rate = (\S+)',
-                'data_select_round': r'data_select_round = (\d+)',
                 'alpha': r'alpha = (\d+\.\d+)',
                 'batch_size': r'batch_size = (\d+)',
-                'hook_layer_name': r'hook_layer_name = (\S+)',
+                'purning_min': r'purning_min = (\d+\.\d+)',
+                'purning_base': r'purning_base = (\d+\.\d+)',
+                'purning_max': r'purning_max = (\d+\.\d+)',
             }
-
             for key, pattern in params.items():
-                match = re.search(pattern, content)
-                if match:
-                    value_str = match.group(1)
-                    if key in ['data_pruning_rate', 'alpha']:
-                        setattr(self, key, float(value_str))
-                    elif key in ['data_select_round', 'batch_size']:
-                        setattr(self, key, int(value_str))
-                    else:
-                        setattr(self, key, value_str)
+                                match = re.search(pattern, content)
+                                if match:
+                                    value_str = match.group(1)
+                                    if key in ['data_pruning_rate', 'alpha', 'purning_min', 'purning_base', 'purning_max']:
+                                        setattr(self, key, float(value_str))
+                                    elif key in ['data_select_round', 'batch_size']:
+                                        setattr(self, key, int(value_str))
+                                    else:
+                                        setattr(self, key, value_str)
 
         except Exception as e:
             print(f"解析日志文件 '{self.log_file_path}' 时发生错误：{e}")
             sys.exit(1)
 
-# --- 调用示例 ---
 if __name__ == '__main__':
 
-    processor = draw_acc_img()
+    processor = draw_slcdacp()
     processor.draw_acc_and_place_in_folder()

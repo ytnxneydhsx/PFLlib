@@ -17,11 +17,9 @@ class drawbase():
         self.log_file_path = None
 
         # 定义需要从 logger 中提取的属性
-        self.data_pruning_rate = None
-        self.data_select_round = None
+
         self.alpha = None
         self.batch_size = None
-        self.hook_layer_name = None
         self.time = None
         self.algorithm = None
         self.model_str = None
@@ -49,40 +47,3 @@ class drawbase():
                 # 不退出，让子类处理文件不存在的情况
                 pass
             
-            # 从日志文件中读取其他参数
-            self._load_parameters_from_logger()
-
-    def _load_parameters_from_logger(self):
-        """
-        从日志文件的内容中解析并加载参数。
-        """
-        if not self.log_file_path or not os.path.exists(self.log_file_path):
-            print(f"警告：日志文件 '{self.log_file_path}' 不存在或未指定，跳过参数加载。")
-            return
-
-        try:
-            with open(self.log_file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-
-            params = {
-                'data_pruning_rate': r'data_pruning_rate = (\S+)',
-                'data_select_round': r'data_select_round = (\d+)',
-                'alpha': r'alpha = (\d+\.\d+)',
-                'batch_size': r'batch_size = (\d+)',
-                'hook_layer_name': r'hook_layer_name = (\S+)',
-            }
-
-            for key, pattern in params.items():
-                match = re.search(pattern, content)
-                if match:
-                    value_str = match.group(1)
-                    if key in ['data_pruning_rate', 'alpha']:
-                        setattr(self, key, float(value_str))
-                    elif key in ['data_select_round', 'batch_size']:
-                        setattr(self, key, int(value_str))
-                    else:
-                        setattr(self, key, value_str)
-
-        except Exception as e:
-            print(f"解析日志文件 '{self.log_file_path}' 时发生错误：{e}")
-            sys.exit(1)
