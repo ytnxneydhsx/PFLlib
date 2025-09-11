@@ -60,121 +60,139 @@
 
 import torch
 from itertools import combinations
+import random
 
 class channelstoolcdacp:
 
     def __init__(self, args, total_batches, device='cuda' if torch.cuda.is_available() else 'cpu'):
 
         self.total_batches = total_batches
-        self.base_rate = getattr(args, 'purning_base', 0.2)
-        self.p_min = getattr(args, 'purning_min', 0.1)
-        self.p_max = getattr(args, 'purning_max', 0.3)
+        self.base_rate =args.purning_base
+        self.p_min = args.purning_min
+        self.p_max = args.purning_max
         self.device = device
-        
-        # 用于存储历史分数的变量
+
+        # 用于DACP历史分数的变量
         self.historical_channel_scores = None
         self.historical_batch_quality = None
         self.current_batch_idx = 0
 
-    def _calculate_instantaneous_scores(self, feature_maps, labels):
+        self.channel_kept_counts = None
+    
+    def _update_pruning_stats(self, mask):
+        """
+        私有辅助函数，更新通道“被保留”的统计信息。
+        """
+        num_channels = mask.shape[1]
+        if self.channel_kept_counts is None:
+            self.channel_kept_counts = torch.zeros(num_channels, device=self.device)
 
+        # 直接用 mask 来统计被保留的通道 (值为1的位置)
+        kept_indicators = mask.squeeze().float()
+
+        if kept_indicators.dim() == 1:
+            # 批次级mask
+            update_values = kept_indicators
+        else:
+            # 样本级mask, 沿批次维度求和
+            update_values = torch.sum(kept_indicators, dim=0)
+        
+        self.channel_kept_counts += update_values.detach()
+
+    def get_kept_channel_counts(self):
+
+        if self.channel_kept_counts is None:
+            print("尚未进行任何剪枝。")
+            return {}
+
+        kept_counts_dict = {i: int(count.item()) for i, count in enumerate(self.channel_kept_counts)}
+        return kept_counts_dict
+
+
+
+    def _calculate_instantaneous_scores(self, feature_maps, labels):
         num_channels = feature_maps.shape[1]
         classes = torch.unique(labels)
         
-        # 如果一个批次中只有一个类别，无法计算类间分离度，直接返回零分
         if len(classes) < 2:
             return torch.zeros(num_channels, device=self.device)
 
         intra_class_scores = torch.zeros(num_channels, device=self.device)
         inter_class_scores = torch.zeros(num_channels, device=self.device)
 
-        # 1. 计算每个类别的质心 (Eq. 1)
         centroids = {}
         for c in classes:
             class_indices = (labels == c).nonzero(as_tuple=True)[0]
             class_feature_maps = feature_maps[class_indices]
             centroids[c.item()] = torch.mean(class_feature_maps, dim=0)
 
-        # 2. 计算 Intra-class Compactness (Eq. 2)
         for c in classes:
             c_item = c.item()
             class_indices = (labels == c).nonzero(as_tuple=True)[0]
             class_feature_maps = feature_maps[class_indices]
             dist = class_feature_maps - centroids[c_item].unsqueeze(0)
-            # 按通道计算 Frobenius 范数的平方
             compactness_per_sample = torch.sum(dist.pow(2), dim=[2, 3])
             avg_compactness_for_class = torch.mean(compactness_per_sample, dim=0)
             intra_class_scores += avg_compactness_for_class
-        intra_class_scores /= len(classes) # 值越小越好
+        intra_class_scores /= len(classes)
 
-        # 3. 计算 Inter-class Separability (Eq. 3)
         class_ids = [c.item() for c in classes]
         for c1, c2 in combinations(class_ids, 2):
             dist = centroids[c1] - centroids[c2]
-            # 按通道计算 Frobenius 范数 (注意论文中没有开方)
             separability = torch.sum(dist.pow(2), dim=[1, 2])
-            inter_class_scores += torch.sqrt(separability) # Eq. 3 使用的是Frobenius范数，而不是其平方
-        # 值越大越好
+            inter_class_scores += separability 
 
-        # 4. 归一化和合并分数 (Eq. 4, 5, 6)
-        norm_intra = intra_class_scores / (torch.sum(intra_class_scores))
-        norm_inter = inter_class_scores / (torch.sum(inter_class_scores))
+        # 防止分母为0
+        sum_intra = torch.sum(intra_class_scores)
+        sum_inter = torch.sum(inter_class_scores)
+        if sum_intra == 0 or sum_inter == 0:
+            return torch.zeros(num_channels, device=self.device)
+
+        norm_intra = intra_class_scores / sum_intra
+        norm_inter = inter_class_scores / sum_inter
         
         instantaneous_scores = norm_inter - norm_intra
         return instantaneous_scores
 
     def _update_and_get_composite_scores(self, feature_maps, labels):
-        """根据 Eq. (7), (8) 更新并计算复合重要性分数 I_i(t)"""
         instantaneous_scores = self._calculate_instantaneous_scores(feature_maps, labels)
         
         if self.historical_channel_scores is None:
             self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
 
-        # 计算历史平均分数
         historical_avg = self.historical_channel_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
         
-        # 计算动态权重 alpha (Eq. 8)
         alpha = 1.0 - (self.current_batch_idx / self.total_batches)
         
-        # 计算复合分数 (Eq. 7)
         composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
         
-        # 更新历史记录以备下次使用
         self.historical_channel_scores += instantaneous_scores
         
         return composite_scores
 
     def _calculate_pruning_rate(self, composite_scores):
-        """根据 DACP 逻辑 (Eq. 9-12) 计算当前批次的剪枝率 P(t)"""
         batch_quality_score = torch.mean(composite_scores)
         
-        # (Eq. 10)
         if self.current_batch_idx == 0:
             historical_avg_quality = batch_quality_score 
         else:
             historical_avg_quality = self.historical_batch_quality
         
-            # 计算缩放因子 W(t) (Eq. 11)
-    # 计算缩放因子 W(t) (Eq. 11)
         if historical_avg_quality > 0 and batch_quality_score < 0:
-            # 历史表现好但当前表现差 -> 激进剪枝
             pruning_rate = self.p_max
         elif historical_avg_quality < 0 and batch_quality_score > 0:
-            # 历史表现差但当前表现好 -> 保守剪枝
             pruning_rate = self.p_min
         else:
-            # 其他情况（例如，两者同号）按照原始公式计算
-            # 计算缩放因子 W(t) (Eq. 11)
-            scaling_factor = historical_avg_quality / (batch_quality_score)
+            if abs(batch_quality_score.item()) < 1e-8: # 避免除以0
+                scaling_factor = 1.0
+            else:
+                scaling_factor = historical_avg_quality / batch_quality_score
             pruning_rate = self.base_rate * scaling_factor.item()
             
-        # 确保剪枝率不会是负数
         pruning_rate = max(0.0, pruning_rate)
         
-        # 最终将剪枝率约束在 [p_min, p_max] 范围内
         pruning_rate = max(self.p_min, min(pruning_rate, self.p_max))
 
-        # 更新历史批次质量的平均值
         if self.historical_batch_quality is None:
             self.historical_batch_quality = batch_quality_score
         else:
@@ -183,47 +201,123 @@ class channelstoolcdacp:
         return pruning_rate
         
     def _get_mask_for_batch(self, composite_scores, pruning_rate):
-        """根据复合分数和剪枝率生成二进制掩码"""
         num_channels = len(composite_scores)
         num_to_prune = int(pruning_rate * num_channels)
         
-        if num_to_prune == 0:
+        if num_to_prune <= 0:
             return torch.ones(1, num_channels, 1, 1, device=self.device)
             
-        # 对通道重要性分数进行排序，找到最不重要的通道
         ranking = torch.argsort(composite_scores)
         channels_to_prune = ranking[:num_to_prune]
         
-        # 创建掩码
         mask = torch.ones(num_channels, device=self.device)
         mask[channels_to_prune] = 0
         
-        # Reshape for broadcasting
         return mask.view(1, -1, 1, 1)
 
+
     def prune_channels(self, feature_maps, labels):
-        """
-        对给定的特征图执行CDACP剪枝。
-        这是提供给客户端的主要接口。
-        """
-        # 确保数据在正确的设备上
         feature_maps = feature_maps.to(self.device)
         labels = labels.to(self.device)
-
-        # 1. 计算复合重要性分数
         composite_scores = self._update_and_get_composite_scores(feature_maps.detach(), labels)
-        
-        # 2. 计算当前批次的动态剪枝率
         pruning_rate = self._calculate_pruning_rate(composite_scores)
-        
-        # 3. 获取剪枝掩码
         mask = self._get_mask_for_batch(composite_scores, pruning_rate)
         
-        # 4. 应用掩码
-        # detach() 防止剪枝操作影响客户端模型的梯度计算
+        self._update_pruning_stats(mask) # 更新统计
+        
         pruned_feature_maps = feature_maps.detach() * mask
-        
-        # 更新批次计数器
         self.current_batch_idx += 1
+        return pruned_feature_maps, pruning_rate
+
+    def prune_channels_historical_only(self, feature_maps, labels):
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        instantaneous_scores = self._calculate_instantaneous_scores(feature_maps.detach(), labels)
+        if self.historical_channel_scores is None:
+            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
+        self.historical_channel_scores += instantaneous_scores
+        historical_avg_scores = self.historical_channel_scores / (self.current_batch_idx + 1)
+        pruning_rate = self._calculate_pruning_rate(historical_avg_scores)
+        mask = self._get_mask_for_batch(historical_avg_scores, pruning_rate)
+
+        self._update_pruning_stats(mask) # 更新统计
+
+        pruned_feature_maps = feature_maps.detach() * mask
+        self.current_batch_idx += 1
+        return pruned_feature_maps, pruning_rate
+    
+    def prune_channels_instantaneous_only(self, feature_maps, labels):
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        instantaneous_scores = self._calculate_instantaneous_scores(feature_maps.detach(), labels)
+        if self.historical_channel_scores is None:
+            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
+        self.historical_channel_scores += instantaneous_scores
+        pruning_rate = self._calculate_pruning_rate(instantaneous_scores)
+        mask = self._get_mask_for_batch(instantaneous_scores, pruning_rate)
         
+        self._update_pruning_stats(mask) # 更新统计
+
+        pruned_feature_maps = feature_maps.detach() * mask
+        self.current_batch_idx += 1
+        return pruned_feature_maps, pruning_rate
+    
+    def prune_channels_fixed_alpha(self, feature_maps, labels, alpha):
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        instantaneous_scores = self._calculate_instantaneous_scores(feature_maps.detach(), labels)
+        if self.historical_channel_scores is None:
+            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
+            historical_avg = torch.zeros_like(instantaneous_scores)
+        else:
+            historical_avg = self.historical_channel_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
+        self.historical_channel_scores += instantaneous_scores
+        pruning_rate = self._calculate_pruning_rate(composite_scores)
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        
+        self._update_pruning_stats(mask) # 更新统计
+
+        pruned_feature_maps = feature_maps.detach() * mask
+        self.current_batch_idx += 1
+        return pruned_feature_maps, pruning_rate
+
+
+    def prune_channels_randomly(self, feature_maps, labels):
+        feature_maps = feature_maps.to(self.device)
+        num_channels = feature_maps.shape[1]
+        pruning_rate = random.uniform(self.p_min, self.p_max)
+        num_to_prune = int(pruning_rate * num_channels)
+        if num_to_prune <= 0:
+            mask = torch.ones(1, num_channels, 1, 1, device=self.device)
+        else:
+            all_channels = list(range(num_channels))
+            channels_to_prune = random.sample(all_channels, num_to_prune)
+            mask = torch.ones(num_channels, device=self.device)
+            mask[channels_to_prune] = 0
+            mask = mask.view(1, -1, 1, 1)
+        
+        self._update_pruning_stats(mask) # 更新统计
+        
+        pruned_feature_maps = feature_maps.detach() * mask
+        return pruned_feature_maps, pruning_rate
+        
+    def prune_top_k(self, feature_maps, labels):
+        feature_maps = feature_maps.to(self.device)
+        N, C, H, W = feature_maps.shape
+        pruning_rate = self.base_rate
+        num_to_prune = int(pruning_rate * C)
+        if num_to_prune <= 0:
+            mask_4d = torch.ones(N, C, 1, 1, device=self.device)
+        else:
+            channel_scores_per_sample = torch.sum(feature_maps.detach().pow(2), dim=[2, 3])
+            ranking = torch.argsort(channel_scores_per_sample, dim=1)
+            channels_to_prune = ranking[:, :num_to_prune]
+            mask_2d = torch.ones_like(channel_scores_per_sample)
+            mask_2d.scatter_(dim=1, index=channels_to_prune, value=0.0)
+            mask_4d = mask_2d.view(N, C, 1, 1)
+
+        self._update_pruning_stats(mask_4d) # 更新统计
+
+        pruned_feature_maps = feature_maps * mask_4d
         return pruned_feature_maps, pruning_rate

@@ -85,11 +85,11 @@ class draw_slcdacp(drawbase):
         if self.alpha is not None:
             title_str += f"_alpha:{self.alpha}"
         if self.purning_min is not None:
-            title_str += f"_pruning_rate:{self.purning_min}"
+            title_str += f"purning_min:{self.purning_min}"
         if self.purning_base is not None:
-            title_str += f"_pruning_rate:{self.purning_base}"
+            title_str += f"purning_base:{self.purning_base}"
         if self.purning_max is not None:
-            title_str += f"_pruning_rate:{self.purning_max}"
+            title_str += f"purning_max:{self.purning_max}"
         plt.title(title_str)
         
         plt.xlabel('Epoch')

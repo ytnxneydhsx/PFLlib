@@ -10,7 +10,7 @@ from datetime import datetime
 from collections import defaultdict
 import copy
 import os
-from channelstools.channelstoolscdacp import channelstoolcdacp
+from channelstools.channelstoolslcdacp import channelstoolcdacp
 # from channelstools.channelstoolscdacp import channel_infomation
 
 class slcdacp(Server):

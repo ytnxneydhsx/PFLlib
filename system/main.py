@@ -1,4 +1,52 @@
 #!/usr/bin/env python
+
+
+import sys
+import os
+import configparser
+
+def setup_environment():
+    """
+    解析命令行参数，从配置文件中获取 device_id，
+    并在导入 torch 之前设置 CUDA_VISIBLE_DEVICES 环境变量。
+    """
+    # 简单的命令行参数解析，只为了获取 -pro 参数
+    profile_name = None
+    if '-pro' in sys.argv:
+        try:
+            # 获取 -pro 参数后面的值
+            profile_name = sys.argv[sys.argv.index('-pro') + 1]
+        except IndexError:
+            # 如果没有值，则忽略
+            pass
+
+    if profile_name:
+        config = configparser.ConfigParser()
+        config.read('config.ini', encoding='utf-8')
+
+        if profile_name in config:
+            # 检查 device_id 是否存在于配置文件中
+            if 'device_id' in config[profile_name]:
+                device_id = config[profile_name]['device_id']
+                print(f"检测到配置文件 [{profile_name}]，将设置 CUDA_VISIBLE_DEVICES={device_id}")
+                # 核心步骤：在导入 torch 之前设置环境变量
+                os.environ["CUDA_VISIBLE_DEVICES"] = device_id
+        else:
+            print(f"警告: config.ini 中未找到配置区块 '{profile_name}'。将使用默认设备。")
+    else:
+        # 如果没有指定 -pro，则使用默认的 device_id=0
+        if "--device_id" in sys.argv:
+             try:
+                device_id = sys.argv[sys.argv.index("--device_id") + 1]
+                os.environ["CUDA_VISIBLE_DEVICES"] = device_id
+                print(f"从命令行读取 device_id={device_id}，并设置环境变量。")
+             except IndexError:
+                 pass
+        
+        # 否则使用代码中的默认值（通常是 0）
+
+# 立即调用这个函数
+setup_environment()
 import matplotlib
 matplotlib.use('Agg')
 import configparser
@@ -550,6 +598,8 @@ if __name__ == "__main__":
     parser.add_argument('-p_min', '--purning_min', type=float, default=0.1)
     parser.add_argument('-p_base', '--purning_base', type=float, default=0.2)
     parser.add_argument('-p_max', '--purning_max', type=float, default=0.3)
+    parser.add_argument('-pt', '--prune_tool', type=str, default='default')
+    parser.add_argument('-fa', '--fixed_alpha', type=float, default=0.2)
 
 
 
