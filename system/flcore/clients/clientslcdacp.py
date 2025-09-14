@@ -13,8 +13,6 @@ class clientslcdacp(Client):
         self.pruning_tool_name = args.prune_tool
         self.fixed_alpha = args.fixed_alpha
 
-
-
     def split_train(self, up_model, cdacp):
         self.pruning_rates_history = []
         
@@ -41,29 +39,44 @@ class clientslcdacp(Client):
                     time.sleep(0.1 * np.abs(np.random.rand()))
 
                 down_output = self.model(x)
-# 根据 self.pruning_tool_name 调用不同的剪枝方法
-            if self.pruning_tool_name == 'historical':
-                pruned_data, current_pruning_rate = cdacp.prune_channels_historical_only(down_output, y)
-            elif self.pruning_tool_name == 'instantaneous':
-                pruned_data, current_pruning_rate = cdacp.prune_channels_instantaneous_only(down_output, y)
-            elif self.pruning_tool_name == 'fixed_alpha':
-                pruned_data, current_pruning_rate = cdacp.prune_channels_fixed_alpha(down_output, y, self.fixed_alpha)
-            # 新增 'random' 选项
-            elif self.pruning_tool_name == 'random':
-                pruned_data, current_pruning_rate = cdacp.prune_channels_randomly(down_output, y)
-            # 新增 'top-k' 选项
-            elif self.pruning_tool_name == 'top-k':
-                pruned_data, current_pruning_rate = cdacp.prune_top_k(down_output, y)
-            else: # 默认使用原版DACP方法
-                pruned_data, current_pruning_rate = cdacp.prune_channels(down_output, y)
+
+                # 1. 根据 self.pruning_tool_name 调用不同的剪枝方法
+                #    这一步只负责计算剪枝后的数据
+                if self.pruning_tool_name == 'historical':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_historical_only(down_output, y)
+                elif self.pruning_tool_name == 'instantaneous':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_instantaneous_only(down_output, y)
+                elif self.pruning_tool_name == 'fixed_alpha':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_fixed_alpha(down_output, y, self.fixed_alpha)
+                elif self.pruning_tool_name == 'random':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_randomly(down_output, y)
+                elif self.pruning_tool_name == 'top-k':
+                    pruned_data, current_pruning_rate = cdacp.prune_top_k(down_output, y)
+                elif self.pruning_tool_name == 'bath_top-k':
+                    pruned_data, current_pruning_rate = cdacp.prune_by_batch_magnitude(down_output, y)
+                elif self.pruning_tool_name == 'index_prune':
+                    pruned_data, current_pruning_rate = cdacp.prune_by_channel_index(down_output, y)
+                elif self.pruning_tool_name == 'default_division':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_division(down_output, y)        
+                elif self.pruning_tool_name == 'default_recent_10':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_recent_10(down_output, y)   
+                else: # 默认使用原版DACP方法
+                    pruned_data, current_pruning_rate = cdacp.prune_channels(down_output, y)
+                
                 self.pruning_rates_history.append(current_pruning_rate)
+                
+                # 2. 将训练步骤移到if/else块之外，确保每次都会执行
                 output = up_model(pruned_data)
                 loss = self.loss(output, y)
+                
                 self.optimizer.zero_grad()
                 up_optimizer.zero_grad()
+                
                 loss.backward()
+                
                 self.optimizer.step()
                 up_optimizer.step()
+
         if self.learning_rate_decay:
             self.learning_rate_scheduler.step()
 
@@ -77,5 +90,3 @@ class clientslcdacp(Client):
         max_local_epochs = self.local_epochs
         num_batches_per_epoch = len(trainloader)
         return num_batches_per_epoch * max_local_epochs
-
-

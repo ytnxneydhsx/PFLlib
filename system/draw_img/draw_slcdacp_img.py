@@ -9,6 +9,7 @@ import shutil
 matplotlib.use('Agg')
 current_dir = os.getcwd()
 sys.path.append(current_dir)
+
 class draw_slcdacp(drawbase):
     def __init__(self, log_filename=None):
         super().__init__(log_filename)
@@ -16,8 +17,9 @@ class draw_slcdacp(drawbase):
         self.purning_min=None
         self.purning_base=None
         self.purning_max=None
+        self.prune_tool=None
+        self.split_model_cnt=None
         self._load_parameters_from_logger()
-
 
         # 仅当成功解析到属性时才构建目录
         if self.base_name and self.algorithm and self.model_str and self.dataset:
@@ -26,8 +28,12 @@ class draw_slcdacp(drawbase):
             purning_min_str = f"purning_min_{self.purning_min}" if self.purning_min is not None else "purning_min_N-A"
             purning_base_str = f"purning_base_{self.purning_base}" if self.purning_base is not None else "purning_base_N-A"
             purning_max_str = f"purning_max_{self.purning_max}" if self.purning_max is not None else "purning_max_N-A"
-
-
+            prune_tool_str=f"{self. prune_tool}" if self.prune_tool is not None else "default"
+            if prune_tool_str=="defult":
+                prune_tool_str="default"
+            if prune_tool_str=="defult_recent_10":
+                prune_tool_str="default_recent_10"
+            split_model_cnt_str=f"split_model_cnt_{self. split_model_cnt}" if self.split_model_cnt is not None else "split_model_cnt_2"
 
             self.output_dir = os.path.join(
                 self.root_path,
@@ -35,15 +41,14 @@ class draw_slcdacp(drawbase):
                 self.model_str,
                 self.dataset,
                 alpha_str,
+                prune_tool_str,
                 purning_min_str,
                 purning_base_str,
                 purning_max_str,
+                split_model_cnt_str,
                 time_str
             )
             # 由于 time 字符串中可能包含冒号，需要额外处理
-            # 这里的 time_str 格式为 'time:2025-08-09_12-16-52'，需要把 time 后的冒号和时间中的冒号都处理掉
-            # 将 'time:2025-08-09_12-16-52' 变为 'time_2025-08-09_12-16-52'
-            # 还需要将时间中的冒号 '-' 替换为下划线
             self.output_dir = self.output_dir.replace(':', '_')
             os.makedirs(self.output_dir, exist_ok=True)
             print(f"输出目录已准备好: '{self.output_dir}'")
@@ -90,6 +95,10 @@ class draw_slcdacp(drawbase):
             title_str += f"purning_base:{self.purning_base}"
         if self.purning_max is not None:
             title_str += f"purning_max:{self.purning_max}"
+        if self.prune_tool is not None:
+            title_str += f"prune_tool:{self.prune_tool}" 
+        if self.split_model_cnt is not None:
+            title_str += f"split_model_cnt:{self.split_model_cnt}" 
         plt.title(title_str)
         
         plt.xlabel('Epoch')
@@ -101,65 +110,104 @@ class draw_slcdacp(drawbase):
         print(f"图表已成功生成并保存为: '{full_output_path}'")
         plt.close()
 
-
     def draw_acc_and_place_in_folder(self):
-
         print("--- 开始扫描并处理所有以 'SLCDACP' 开头的日志文件和图片 ---")
         if not os.path.exists(self.root_path):
             print(f"错误：日志根目录 '{self.root_path}' 不存在。")
             return
 
         for filename in os.listdir(self.root_path):
-            # --- 关键改动在这里 ---
-            # 增加一个条件，确保只处理以 'SLCS' 开头的 .log 文件
             if filename.endswith(".log") and filename.startswith("SLCDACP"):
                 try:
                     print(f"\n>>> 正在处理文件: {filename}")
-                    # 创建一个新实例来生成图片和目录结构
                     drawer = draw_slcdacp(filename)
                     
-                    # 检查drawer是否成功创建了output_dir
                     if not drawer.output_dir:
                         print(f"跳过文件 '{filename}'，因为无法为其确定输出目录。")
                         continue
 
                     drawer.plot_acc_img()
 
-                    # 定义新文件夹的路径 (注意：这里我们直接使用drawer.output_dir作为目标)
-                    # output_dir 已经是根据文件属性创建的结构化路径
                     new_folder_path = drawer.output_dir 
                     
-                    # 定义图片文件和日志文件的原始路径
-                    base_name_without_ext = os.path.splitext(filename)[0]
                     log_file_path = os.path.join(self.root_path, filename)
-                    output_image_name = f"{base_name_without_ext}.jpg"
-                    # 图片生成后会直接位于 output_dir 中
-                    original_image_path = os.path.join(drawer.output_dir, output_image_name)
-
-                    # 定义日志文件的新路径
                     new_log_path = os.path.join(new_folder_path, filename)
 
-                    # 移动日志文件 (图片已经生成在目标位置，无需移动)
                     if os.path.exists(log_file_path):
                         shutil.move(log_file_path, new_log_path)
                         print(f"已将日志文件移动到: '{new_log_path}'")
                     
-                    # 简单清理一下逻辑，因为图片已经直接生成在目标目录，所以不需要移动图片
-                    # 只需要移动日志文件即可
-
                 except Exception as e:
                     print(f"处理文件 '{filename}' 时出错：{e}")
                     print("此文件的处理将跳过。")
-            # --- 改动结束 ---
         
         print("\n--- 所有符合条件的文件和图表已处理并整理完毕 ---")
+        
+    def flatten_logs_and_cleanup_images(self):
+        """
+        将logger根目录下的所有子文件夹中的.log文件移动到根目录，
+        删除当前工作目录下的所有.jpg文件，
+        并删除logger根目录下的所有子文件夹。
+        """
+        print("--- 开始执行预处理任务：平整化日志目录并清理 ---")
+        
+        if not os.path.exists(self.root_path):
+            print(f"错误：日志根目录 '{self.root_path}' 不存在。")
+            return
+        
+        # 任务1: 将所有子目录的 .log 文件移动到根目录
+        print(f"步骤 1: 正在扫描 '{self.root_path}' 及其子目录以移动 .log 文件...")
+        for root, dirs, files in os.walk(self.root_path):
+            if root == self.root_path:
+                continue
+            
+            for file in files:
+                if file.endswith(".log"):
+                    source_path = os.path.join(root, file)
+                    destination_path = os.path.join(self.root_path, file)
+                    
+                    if os.path.exists(destination_path):
+                        print(f"警告：目标位置已存在文件 '{file}'，跳过移动。")
+                        continue
+                    
+                    try:
+                        shutil.move(source_path, destination_path)
+                        print(f"已将 '{source_path}' 移动到根目录")
+                    except Exception as e:
+                        print(f"移动文件 '{source_path}' 时出错: {e}")
+
+        # 任务2: 删除当前工作目录下的 .jpg 文件
+        print(f"\n步骤 2: 正在扫描当前工作目录 '{current_dir}' 以删除 .jpg 文件...")
+        for filename in os.listdir(current_dir):
+            if filename.lower().endswith(".jpg"):
+                file_path = os.path.join(current_dir, filename)
+                try:
+                    os.remove(file_path)
+                    print(f"已删除图片: '{file_path}'")
+                except Exception as e:
+                    print(f"删除文件 '{file_path}' 时出错: {e}")
+
+        print(f"\n步骤 3: 正在清理 '{self.root_path}' 目录下的所有子文件夹...")
+        for filename in os.listdir(self.root_path):
+            file_path = os.path.join(self.root_path, filename)
+            # 检查这是否是一个文件夹
+            if os.path.isdir(file_path):
+                try:
+                    # 使用 shutil.rmtree 来递归删除整个文件夹
+                    shutil.rmtree(file_path)
+                    print(f"已删除文件夹及其所有内容: '{file_path}'")
+                except Exception as e:
+                    print(f"删除文件夹 '{file_path}' 时出错: {e}")
+
+
+        print("\n--- 预处理任务完成 ---")
 
     def _load_parameters_from_logger(self):
         """
         从日志文件的内容中解析并加载参数。
         """
         if not self.log_file_path or not os.path.exists(self.log_file_path):
-            print(f"警告：日志文件 '{self.log_file_path}' 不存在或未指定，跳过参数加载。")
+            # print(f"警告：日志文件 '{self.log_file_path}' 不存在或未指定，跳过参数加载。")
             return
 
         try:
@@ -167,28 +215,35 @@ class draw_slcdacp(drawbase):
                 content = f.read()
 
             params = {
-                'alpha': r'alpha = (\d+\.\d+)',
-                'batch_size': r'batch_size = (\d+)',
-                'purning_min': r'purning_min = (\d+\.\d+)',
-                'purning_base': r'purning_base = (\d+\.\d+)',
-                'purning_max': r'purning_max = (\d+\.\d+)',
+                'alpha': r'alpha\s*=\s*(\d+\.?\d*)',
+                'batch_size': r'batch_size\s*=\s*(\d+)',
+                'purning_min': r'purning_min\s*=\s*(\d+\.?\d*)',
+                'purning_base': r'purning_base\s*=\s*(\d+\.?\d*)',
+                'purning_max': r'purning_max\s*=\s*(\d+\.?\d*)',
+                'split_model_cnt':r'split_model_cnt\s*=\s*(\d+)',
+                'prune_tool': r'prune_tool\s*=\s*([\w-]+)',
             }
+            
             for key, pattern in params.items():
-                                match = re.search(pattern, content)
-                                if match:
-                                    value_str = match.group(1)
-                                    if key in ['data_pruning_rate', 'alpha', 'purning_min', 'purning_base', 'purning_max']:
-                                        setattr(self, key, float(value_str))
-                                    elif key in ['data_select_round', 'batch_size']:
-                                        setattr(self, key, int(value_str))
-                                    else:
-                                        setattr(self, key, value_str)
+                match = re.search(pattern, content)
+                if match:
+                    value_str = match.group(1)
+                    if key in ['alpha', 'purning_min', 'purning_base', 'purning_max']:
+                        setattr(self, key, float(value_str))
+                    elif key in ['batch_size']:
+                        setattr(self, key, int(value_str))
+                    else: 
+                        setattr(self, key, value_str)
 
         except Exception as e:
             print(f"解析日志文件 '{self.log_file_path}' 时发生错误：{e}")
-            sys.exit(1)
+            # sys.exit(1) # 在批量处理中，最好不要直接退出
 
 if __name__ == '__main__':
-
     processor = draw_slcdacp()
+    
+    # 在主流程开始前，先执行清理和文件移动操作
+    processor.flatten_logs_and_cleanup_images()
+    
+    # 执行原有的绘图和文件整理流程
     processor.draw_acc_and_place_in_folder()

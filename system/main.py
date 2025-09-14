@@ -6,10 +6,7 @@ import os
 import configparser
 
 def setup_environment():
-    """
-    解析命令行参数，从配置文件中获取 device_id，
-    并在导入 torch 之前设置 CUDA_VISIBLE_DEVICES 环境变量。
-    """
+
     # 简单的命令行参数解析，只为了获取 -pro 参数
     profile_name = None
     if '-pro' in sys.argv:

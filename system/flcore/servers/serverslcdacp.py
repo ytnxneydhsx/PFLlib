@@ -95,7 +95,6 @@ class slcdacp(Server):
                 if rates:
                     avg_rate = sum(rates) / len(rates)
                     client_pruning_rates[client.id] = avg_rate
-            
             # 4. 训练完成后，在循环外打印日志
             if client_pruning_rates:
                 avg_rate_for_round = sum(client_pruning_rates.values()) / len(client_pruning_rates)
@@ -106,6 +105,15 @@ class slcdacp(Server):
                     logger.info(f"Client {client_id} Average Pruning Rate: {avg_rate:.4f}")
                 print(f"Overall Average Pruning Rate for Round {i}: {avg_rate_for_round:.4f}")
                 logger.info(f"Overall Average Pruning Rate for Round {i}: {avg_rate_for_round:.4f}")
+
+            # Print channel_kept_counts for the current round
+            kept_channel_counts = self.cdacp.get_kept_channel_counts()
+            if kept_channel_counts:
+                print(f"-------------Round {i} Channel Kept Counts-------------")
+                logger.info(f"-------------Round {i} Channel Kept Counts-------------")
+                print(kept_channel_counts)
+                logger.info(str(kept_channel_counts))
+
             #本轮花费时间
             self.Budget.append(time.time() - s_t)
             print('-'*25, 'time cost', '-'*25, self.Budget[-1])
