@@ -55,4 +55,3 @@ class channelstoolsbase():
             output = self.model(x)
             loss = criterion(output, y)
         return loss.item()
-    def  

@@ -695,8 +695,54 @@ class VGG16_cifar10(nn.Module):
         # 4. 返回最终的输出
         return x
     
+class VGG_Simple_MNIST_Blocked(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(True),
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+        )
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        
+        # 将 Flatten 操作集成到 fc1 中
+        self.fc1 = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(64 * 7 * 7, 256),
+            nn.ReLU(True),
+            nn.Dropout(),
+        )
 
+        self.fc2 = nn.Sequential(
+            nn.Linear(256, num_classes),
+        )
 
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.fc1(x)
+        x = self.fc2(x)
+        
+        return x
 
 #---------------restnet18------------
 class ResBasicBlock(nn.Module):

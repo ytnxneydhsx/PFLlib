@@ -63,7 +63,6 @@ class Server(object):
         self.new_clients = []
         self.eval_new_clients = False
         self.fine_tuning_epoch_new = args.fine_tuning_epoch_new
-        self.data_select_obj = args.data_select_obj
 
     #设置客户端的各个参数
     def set_clients(self, clientObj):

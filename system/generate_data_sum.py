@@ -36,10 +36,29 @@ from dataset.generate_Cifar10 import run_data_Cifar10_generation
 
 if __name__ == "__main__":
 
+    # section='MNIST_DATA_GENERATION_niid_True_partition_dir_alpha_0.5_num_clients_5'
+    # config = configparser.ConfigParser()
+    # files_read = config.read('system/config.ini')
+    # run_data_MNIST_generation(config,section)
+
+    # section='MNIST_DATA_GENERATION_niid_False_partition_pat_alpha_1_num_clients_5'
+    # config = configparser.ConfigParser()
+    # files_read = config.read('system/config.ini')
+    # run_data_MNIST_generation(config,section)
+
+    # section='Cifar10_DATA_GENERATION_niid_False_partition_pat_alpha_1_num_clients_5'
+    # config = configparser.ConfigParser()
+    # files_read = config.read('system/config.ini')
+    # run_data_Cifar10_generation(config,section)
+
+    # section='Cifar10_DATA_GENERATION_niid_True_partition_dir_alpha_0.8_num_clients_5'
+    # config = configparser.ConfigParser()
+    # files_read = config.read('system/config.ini')
+    # run_data_Cifar10_generation(config,section)
+
+
+    section='Cifar10_DATA_GENERATION_niid_True_partition_dir_alpha_0.5_num_clients_5'
     config = configparser.ConfigParser()
     files_read = config.read('system/config.ini')
-    # run_data_MNIST_generation(config)
-    run_data_Cifar10_generation(config)
-
-
+    run_data_Cifar10_generation(config,section)
 
