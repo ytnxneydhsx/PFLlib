@@ -20,8 +20,10 @@ class clientslcdacp(Client):
         
         self.model.train()
         up_model.train() 
-        up_optimizer = torch.optim.SGD(up_model.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=5e-4)
-        
+        if self.optimizer_str=="SGD":
+            up_optimizer = torch.optim.SGD(up_model.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=5e-4)
+        elif self.optimizer_str=="Adam":
+            up_optimizer =torch.optim.Adam(up_model.parameters(), lr=self.learning_rate, betas=(0.9, 0.999), weight_decay=1e-4)
         start_time = time.time()
 
         max_local_epochs = self.local_epochs
@@ -60,6 +62,16 @@ class clientslcdacp(Client):
                     pruned_data, current_pruning_rate = cdacp.prune_channels_division(down_output, y)        
                 elif self.pruning_tool_name == 'default_recent_10':
                     pruned_data, current_pruning_rate = cdacp.prune_channels_recent_10(down_output, y)   
+                elif self.pruning_tool_name == 'default_recent_100':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_recent_100(down_output, y)   
+                elif self.pruning_tool_name == 'STD':
+                    pruned_data, current_pruning_rate = cdacp.prune_by_variance(down_output, y)  
+                elif self.pruning_tool_name =='rand_top-k':
+                    pruned_data, current_pruning_rate = cdacp.prune_by_probabilistic_magnitude(down_output, y)  
+                elif self.pruning_tool_name =='default_SLIP':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_SLIP(down_output, y)  
+                elif self.pruning_tool_name=='default_hybrid_history':   
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_hybrid_history(down_output, y)  
                 else: # 默认使用原版DACP方法
                     pruned_data, current_pruning_rate = cdacp.prune_channels(down_output, y)
                 

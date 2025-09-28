@@ -104,15 +104,19 @@ from utils.mem_utils import MemReporter
 
 from data_select.datakmeans import  datakmeans
 from data_select.datacenteragg import  datacenteragg
+import random
 
 
 
 def set_deterministic_seeds(seed=42):
     """设置所有随机种子以确保实验可复现性。"""
     torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    random.seed(seed)
+    np.random.seed(seed)
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
 
 def run(args):
@@ -567,6 +571,7 @@ def main():
     parser.add_argument('-atv','--alpha_test_values', type=str, default="0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0")
     parser.add_argument('-ddir', '--data_dir', type=str, default='../dataset/')
     parser.add_argument('-ds', '--data_section', type=str, default=None)
+    parser.add_argument('-op', '--optimizer_str', type=str, default=None)
     args = parser.parse_args()
 
     if args.profile:

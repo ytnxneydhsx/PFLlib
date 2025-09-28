@@ -1,61 +1,3 @@
-# import torch
-# import torch.nn as nn
-# from typing import List, Union
-# from typing import List, Tuple
-# from channelstools.channelstoolsbase import channelstoolsbase
-
-# class channelstoolcdacp(channelstoolsbase):
-#     def __init__(self, args):
-#         super().__init__(args)
-#         self.channel_group_num=args.channel_group_num
-
-
-#     def get_channels_freeze_list_sum(self):
-#         group_size = self.channel_num // self.channel_group_num
-#         channels_freeze_list_sum = []
-#         for i in range(self.channel_group_num):
-#             start_channel = i * group_size
-#             if i == self.channel_group_num - 1:
-#                 end_channel = self.channel_num
-#             else:
-#                 end_channel = (i + 1) * group_size
-#             channels_freeze_list = list(range(start_channel, end_channel))
-#             channels_freeze_list_sum.append(channels_freeze_list)
-#         return channels_freeze_list_sum
-    
-#     def analyze_layer_with_data(self,channels_freeze_list):
-#         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#         self.model.eval()
-#         self.model.to(device)
-#         inputs, labels = self.bath_data
-#         inputs, labels = inputs.to(device), labels.to(device)
-#         sequential_layers = list(self.model.children())
-#         if not 1 <= self.split_model_cnt <= len(sequential_layers):
-#             raise IndexError(
-#                 f"Layer index {self.split_model_cnt} is out of bounds. Model has {len(sequential_layers)} sequential modules."
-#             )
-#         target_layer = sequential_layers[self.split_model_cnt - 1]
-#         criterion = nn.CrossEntropyLoss()
-#         hook_handle = None
-#         if channels_freeze_list:
-#             def create_freezer_hook(channels):
-#                 def hook(module, input, output):
-#                     if output.dim() == 4:  
-#                         output[:, channels, :, :] = 0.0
-#                     elif output.dim() == 2:  
-#                         output[:, channels] = 0.0
-#                     return output
-#                 return hook
-#             hook = create_freezer_hook(channels_freeze_list)
-#             hook_handle = target_layer.register_forward_hook(hook)
-#         with torch.no_grad():
-#             outputs = self.model(inputs)
-#             loss = criterion(outputs, labels)
-#         if hook_handle is not None:
-#             hook_handle.remove()
-#         return loss.item()
-
-
 import torch
 from itertools import combinations
 import random
@@ -65,7 +7,7 @@ class channelstoolcdacp:
     def __init__(self, args, total_batches, device='cuda' if torch.cuda.is_available() else 'cpu'):
 
         self.total_batches = total_batches
-        self.base_rate =args.purning_base
+        self.base_rate = args.purning_base
         self.p_min = args.purning_min
         self.p_max = args.purning_max
         self.device = device
@@ -78,6 +20,15 @@ class channelstoolcdacp:
         self.channel_kept_counts = None
         self.historical_channel_scores_division = None
         self.recent_channel_scores = []
+        
+        # 为 SLIP 方法新增的变量，用于存储最近的批次质量
+        self.recent_batch_qualities = []
+
+        # 为 hybrid_history 方法准备的变量
+        self.recent_batch_qualities_for_rate = []
+
+        # [NEW] 为 recent_100 方法新增的变量
+        self.recent_channel_scores_100 = []
     
     def _update_pruning_stats(self, mask):
         """
@@ -247,6 +198,28 @@ class channelstoolcdacp:
         composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
         
         return composite_scores
+
+    # [NEW] Helper function for recent_100
+    def _update_and_get_composite_scores_recent_100(self, feature_maps, labels):
+        instantaneous_scores = self._calculate_instantaneous_scores(feature_maps, labels)
+        
+        self.recent_channel_scores_100.append(instantaneous_scores)
+        if len(self.recent_channel_scores_100) > 100:
+            self.recent_channel_scores_100.pop(0)
+
+        if not self.recent_channel_scores_100:
+            historical_avg = torch.zeros_like(instantaneous_scores)
+        else:
+            historical_avg = torch.mean(torch.stack(self.recent_channel_scores_100), dim=0)
+
+        if self.historical_channel_scores is None:
+            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
+        self.historical_channel_scores += instantaneous_scores
+
+        alpha = 1.0 - (self.current_batch_idx / self.total_batches)
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
+        
+        return composite_scores
         
     def _calculate_pruning_rate(self, composite_scores):
         batch_quality_score = torch.mean(composite_scores)
@@ -290,6 +263,10 @@ class channelstoolcdacp:
         
         return mask.view(1, -1, 1, 1)
 
+    # ==============================================================================
+    # ============================ 主 要 的 剪 枝 函 数 ==============================
+    # ==============================================================================
+
     def prune_channels(self, feature_maps, labels):
         feature_maps = feature_maps.to(self.device)
         labels = labels.to(self.device)
@@ -302,7 +279,117 @@ class channelstoolcdacp:
         
         self.current_batch_idx += 1
         return pruned_feature_maps, pruning_rate
-    
+
+    def prune_channels_SLIP(self, feature_maps, labels):
+        """
+        对称区间线性插值剪枝 (Symmetric Linear Interpolation Pruning, SLIP)。
+        - 剪枝率基准从 p_min 线性增长到 p_max。
+        - 使用最近100个批次的质量均值作为历史参考，进行自适应调整。
+        - 增加了对历史与当前批次质量得分正负号变化的鲁棒性处理。
+        """
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+
+        # 1. 计算当前批次的质量
+        instantaneous_scores = self._calculate_instantaneous_scores(feature_maps.detach(), labels)
+        current_batch_quality = torch.mean(instantaneous_scores)
+
+        # 2. 更新并获取近期历史质量 (滑动窗口为100)
+        self.recent_batch_qualities.append(current_batch_quality.detach()) # 存入不带梯度的值
+        if len(self.recent_batch_qualities) > 100:
+            self.recent_batch_qualities.pop(0)
+        
+        if not self.recent_batch_qualities:
+            recent_avg_quality = current_batch_quality
+        else:
+            recent_qualities_tensor = torch.stack(self.recent_batch_qualities)
+            recent_avg_quality = torch.mean(recent_qualities_tensor)
+
+        # 3. 计算线性插值的计划剪枝率
+        p_schedule = self.p_min + (self.p_max - self.p_min) * (self.current_batch_idx / self.total_batches)
+
+        # 4. 计算自适应剪枝率，并加入正负号判断逻辑
+        if recent_avg_quality > 0 and current_batch_quality < 0:
+            pruning_rate = self.p_max
+        elif recent_avg_quality < 0 and current_batch_quality > 0:
+            pruning_rate = self.p_min
+        else:
+            scaling_factor = recent_avg_quality / current_batch_quality
+            pruning_rate = p_schedule * scaling_factor.item()
+
+        # 5. 将最终剪枝率约束在 [p_min, p_max] 区间内
+        pruning_rate = max(self.p_min, min(pruning_rate, self.p_max))
+
+        # 6. 获取并应用掩码 (使用瞬时分数进行排序)
+        mask = self._get_mask_for_batch(instantaneous_scores, pruning_rate)
+        
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        
+        # 7. 更新全局批次计数器
+        self.current_batch_idx += 1
+        
+        return pruned_feature_maps, pruning_rate
+
+    def prune_channels_hybrid_history(self, feature_maps, labels):
+        """
+        混合历史信息与线性插值剪枝策略 (最终版)。
+        - 通道重要性评分：使用 "瞬时分数" 与 "全局历史平均分数" 进行加权，确保评分的稳定性。
+        - 剪枝率自适应调整：
+              - 基础剪枝率：随训练进程从 p_min 到 p_max 线性增长 (线性插值机制)。
+              - 历史参考：使用 "最近100个批次的质量均值" 作为历史参考，进行自适应缩放。
+        """
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+
+        # 1. 计算复合重要性分数 (使用全局历史信息)
+        composite_scores = self._update_and_get_composite_scores(feature_maps.detach(), labels)
+
+        # 2. 计算自适应剪枝率 (结合近期历史与线性插值)
+        # 2.1 获取当前批次的质量
+        current_batch_quality = torch.mean(composite_scores)
+
+        # 2.2 更新并获取近期历史质量 (滑动窗口为100)
+        self.recent_batch_qualities_for_rate.append(current_batch_quality.detach())
+        if len(self.recent_batch_qualities_for_rate) > 100:
+            self.recent_batch_qualities_for_rate.pop(0)
+        
+        if not self.recent_batch_qualities_for_rate:
+            recent_avg_quality = current_batch_quality
+        else:
+            recent_qualities_tensor = torch.stack(self.recent_batch_qualities_for_rate)
+            recent_avg_quality = torch.mean(recent_qualities_tensor)
+
+        # 【新增】计算线性插值的计划剪枝率 (从 SLIP 函数引入)
+        p_schedule = self.p_min + (self.p_max - self.p_min) * (self.current_batch_idx / self.total_batches)
+        print(p_schedule)
+        # 2.3 基于近期历史和当前质量，计算最终剪枝率
+        if recent_avg_quality > 0 and current_batch_quality < 0:
+            pruning_rate = self.p_max
+        elif recent_avg_quality < 0 and current_batch_quality > 0:
+            pruning_rate = self.p_min
+        else:
+            scaling_factor = recent_avg_quality / current_batch_quality
+            
+            pruning_rate = p_schedule * scaling_factor
+
+        # 2.4 将剪枝率约束在安全范围内
+        pruning_rate = max(self.p_min, min(pruning_rate, self.p_max))
+        
+        # 3. 获取并应用掩码
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        
+        # 4. 更新全局批次计数器
+        self.current_batch_idx += 1
+        
+        return pruned_feature_maps, pruning_rate
+
+
+
+
     def prune_channels_division(self, feature_maps, labels):
         feature_maps = feature_maps.to(self.device)
         labels = labels.to(self.device)
@@ -323,6 +410,21 @@ class channelstoolcdacp:
         labels = labels.to(self.device)
         
         composite_scores = self._update_and_get_composite_scores_recent_10(feature_maps.detach(), labels)
+        pruning_rate = self._calculate_pruning_rate(composite_scores)
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        
+        self._update_pruning_stats(mask)
+        
+        pruned_feature_maps = feature_maps * mask
+        
+        self.current_batch_idx += 1
+        return pruned_feature_maps, pruning_rate
+
+    def prune_channels_recent_100(self, feature_maps, labels):
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        
+        composite_scores = self._update_and_get_composite_scores_recent_100(feature_maps.detach(), labels)
         pruning_rate = self._calculate_pruning_rate(composite_scores)
         mask = self._get_mask_for_batch(composite_scores, pruning_rate)
         
@@ -473,10 +575,58 @@ class channelstoolcdacp:
             mask_1d[channels_to_prune] = 0
             mask = mask_1d.view(1, C, 1, 1)
 
-
             pruned_feature_maps = feature_maps * mask
 
         self._update_pruning_stats(mask)
 
         return pruned_feature_maps, pruning_rate
+    
+    def prune_by_variance(self, feature_maps, labels=None):
+        """
+        根据批次中每个样本的特征图方差进行通道剪枝。
+        保留方差最大的前 N% 的通道，将其余通道置零。
+        此处的保留率由 self.base_rate (即 args.purning_base) 控制。
+        """
+        feature_maps = feature_maps.to(self.device)
+        N, C, H, W = feature_maps.shape
+        percentage_to_keep = self.base_rate 
+        num_to_keep = int(C * percentage_to_keep)
+        if num_to_keep >= C:
+            return feature_maps, 0.0
+        if num_to_keep <= 0:
+            mask_4d = torch.zeros_like(feature_maps)
+            self._update_pruning_stats(mask_4d)
+            return feature_maps * mask_4d, 1.0
+        channel_variances = torch.var(feature_maps.detach(), dim=(-2, -1), unbiased=False)
+        top_indices = torch.topk(channel_variances, k=num_to_keep, dim=1).indices
+        mask_2d = torch.zeros_like(channel_variances, device=self.device)
+        mask_2d.scatter_(dim=1, index=top_indices, value=1.0)
+        mask_4d = mask_2d.view(N, C, 1, 1)
+        self._update_pruning_stats(mask_4d)
+        pruned_feature_maps = feature_maps * mask_4d
+        pruning_rate = 1.0 - (num_to_keep / C)
+        return pruned_feature_maps, pruning_rate
 
+    def prune_by_probabilistic_magnitude(self, feature_maps, labels=None):
+        """
+        根据特征图的幅值进行样本级概率剪枝。
+        幅值越小的通道被剪枝的概率越高。剪枝的比例由 self.base_rate 控制。
+        """
+        feature_maps = feature_maps.to(self.device)
+        N, C, H, W = feature_maps.shape
+        pruning_rate = self.base_rate
+        num_to_prune = int(C * pruning_rate)
+        if num_to_prune >= C:
+            return torch.zeros_like(feature_maps), 1.0
+        if num_to_prune <= 0:
+            return feature_maps, 0.0
+        magnitudes = torch.sum(feature_maps.detach().pow(2), dim=(-2, -1))
+        pruning_scores = -magnitudes + 1e-9
+        pruning_probs = torch.nn.functional.softmax(pruning_scores, dim=1)
+        channels_to_prune = torch.multinomial(pruning_probs, num_samples=num_to_prune, replacement=False)
+        mask_2d = torch.ones_like(magnitudes, device=self.device)
+        mask_2d.scatter_(dim=1, index=channels_to_prune, value=0.0)
+        mask_4d = mask_2d.view(N, C, 1, 1)
+        self._update_pruning_stats(mask_4d)
+        pruned_feature_maps = feature_maps * mask_4d
+        return pruned_feature_maps, pruning_rate
