@@ -4,7 +4,6 @@ import numpy as np
 import time
 from flcore.clients.clientbase import Client
 from channelstools.channelstoolslcdacp import channelstoolcdacp
-# from channelstools.channelstoolscdacp import channel_infomation
 
 class clientslcdacp(Client):
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
@@ -18,8 +17,10 @@ class clientslcdacp(Client):
         
         trainloader = self.load_train_data()
         
+        # self.model 是 down_model
         self.model.train()
         up_model.train() 
+
         if self.optimizer_str=="SGD":
             up_optimizer = torch.optim.SGD(up_model.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=5e-4)
         elif self.optimizer_str=="Adam":
@@ -42,8 +43,7 @@ class clientslcdacp(Client):
 
                 down_output = self.model(x)
 
-                # 1. 根据 self.pruning_tool_name 调用不同的剪枝方法
-                #    这一步只负责计算剪枝后的数据
+                # 1. 前向传播剪枝
                 if self.pruning_tool_name == 'historical':
                     pruned_data, current_pruning_rate = cdacp.prune_channels_historical_only(down_output, y)
                 elif self.pruning_tool_name == 'instantaneous':
@@ -71,13 +71,20 @@ class clientslcdacp(Client):
                 elif self.pruning_tool_name =='default_SLIP':
                     pruned_data, current_pruning_rate = cdacp.prune_channels_SLIP(down_output, y)  
                 elif self.pruning_tool_name=='default_hybrid_history':   
-                    pruned_data, current_pruning_rate = cdacp.prune_channels_hybrid_history(down_output, y)  
-                else: # 默认使用原版DACP方法
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_hybrid_history(down_output, y)
+                elif self.pruning_tool_name == 'default_mask':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels(down_output, y)
+                elif self.pruning_tool_name == 'default_keep_count_mask':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels(down_output, y)
+                elif self.pruning_tool_name == 'default_mask_no_gradient':
+                    pruned_data, current_pruning_rate = cdacp.default_mask_no_gradient(down_output, y)
+                elif self.pruning_tool_name == 'default_mask_gradient':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels(down_output, y)
+                else: 
                     pruned_data, current_pruning_rate = cdacp.prune_channels(down_output, y)
                 
                 self.pruning_rates_history.append(current_pruning_rate)
                 
-                # 2. 将训练步骤移到if/else块之外，确保每次都会执行
                 output = up_model(pruned_data)
                 loss = self.loss(output, y)
                 
@@ -85,6 +92,17 @@ class clientslcdacp(Client):
                 up_optimizer.zero_grad()
                 
                 loss.backward()
+                
+                if self.pruning_tool_name == 'default_mask_gradient':
+                    last_mask = cdacp.get_last_mask()
+                    if last_mask is not None:
+                        last_layer = self.model[-1] 
+                        if isinstance(last_layer, (torch.nn.Conv2d, torch.nn.Linear)):
+                            grad_mask = last_mask.squeeze().view(-1, 1, 1, 1) 
+                            if last_layer.weight.grad is not None:
+                                last_layer.weight.grad.mul_(grad_mask)
+                            if last_layer.bias is not None and last_layer.bias.grad is not None:
+                                last_layer.bias.grad.mul_(last_mask.squeeze())
                 
                 self.optimizer.step()
                 up_optimizer.step()

@@ -10,6 +10,7 @@ sys.path.append(dataset_dir)
 import configparser
 from dataset.generate_MNIST import run_data_MNIST_generation
 from dataset.generate_Cifar10 import run_data_Cifar10_generation
+from dataset.generate_HAM1000 import run_data_HAM1000_generation
 
 # 假设 py2_module 也已准备好
 # from py2_module import print_all_configurations 
@@ -57,8 +58,25 @@ if __name__ == "__main__":
     # run_data_Cifar10_generation(config,section)
 
 
-    section='Cifar10_DATA_GENERATION_niid_True_partition_dir_alpha_0.5_num_clients_5'
+    # section='Cifar10_DATA_GENERATION_niid_True_partition_dir_alpha_0.5_num_clients_5'
+    # config = configparser.ConfigParser()
+    # files_read = config.read('system/config.ini')
+    # run_data_Cifar10_generation(config,section)
+
+    # section='Cifar10_DATA_GENERATION_niid_True_partition_dir_alpha_0.7_num_clients_5'
+    # config = configparser.ConfigParser()
+    # files_read = config.read('system/config.ini')
+    # run_data_Cifar10_generation(config,section)
+
+    section='HAM1000_DATA_GENERATION_niid_True_partition_dir_alpha_0.5_num_clients_5'
     config = configparser.ConfigParser()
     files_read = config.read('system/config.ini')
-    run_data_Cifar10_generation(config,section)
+    run_data_HAM1000_generation(config,section)
+    
+    section='HAM1000_DATA_GENERATION_niid_False_partition_pat_alpha_1_num_clients_5'
+    config = configparser.ConfigParser()
+    files_read = config.read('system/config.ini')
+    run_data_HAM1000_generation(config,section)
+
+
 

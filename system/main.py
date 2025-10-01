@@ -28,7 +28,7 @@ def setup_environment():
 
     if profile_name:
         config = configparser.ConfigParser()
-        config.read('config.ini', encoding='utf-8')
+        config.read('train_config.ini', encoding='utf-8')
 
         if profile_name in config:
             # 检查 device_id 是否存在于配置文件中
@@ -575,25 +575,35 @@ def main():
     args = parser.parse_args()
 
     if args.profile:
-        print(f"检测到 profile: [{args.profile}]，将从 config.ini 加载并覆盖参数...")
-        config = configparser.ConfigParser()
-        config.read('config.ini', encoding='utf-8')
+        profile_name = args.profile
+        print(f"检测到 profile: [{profile_name}]，将从 train_config.ini 和 data.ini 加载并覆盖参数...")
 
-        if args.profile not in config:
-            print(f"错误: 在 config.ini 中未找到名为 '{args.profile}' 的配置区块!")
+        # 1. 读取 train_config.ini
+        train_config = configparser.ConfigParser()
+        train_config.read('train_config.ini', encoding='utf-8')
+        if not train_config.has_section(profile_name):
+            print(f"错误: 在 train_config.ini 中未找到名为 '{profile_name}' 的配置区块!")
             sys.exit(1)
 
-        if config.has_option(args.profile, 'data_section'):
-            data_section_name = config.get(args.profile, 'data_section')
-            if data_section_name in config:
-                print(f"检测到 data_section，正在加载基础配置 [{data_section_name}]...")
-                apply_config_section(args, config, data_section_name, parser)
-            else:
-                print(f"错误: config.ini 中未找到 data_section 指定的区块 '{data_section_name}'!")
-                sys.exit(1)
+        # 2. 寻找 data_section 指针
+        if not train_config.has_option(profile_name, 'data_section'):
+            print(f"错误: 在 train_config.ini 的区块 [{profile_name}] 中未找到 'data_section' 指针!")
+            sys.exit(1)
+        data_section_name = train_config.get(profile_name, 'data_section')
+
+        # 3. 读取 data.ini
+        data_config = configparser.ConfigParser()
+        data_config.read('data.ini', encoding='utf-8')
+        if not data_config.has_section(data_section_name):
+            print(f"错误: 在 data.ini 中未找到 data_section 指定的区块 '{data_section_name}'!")
+            sys.exit(1)
+
+        # 4. 应用配置 (先应用data.ini的基础配置，再应用train_config.ini的专属配置以覆盖)
+        print(f"检测到 data_section，正在加载基础配置 [{data_section_name}] from data.ini...")
+        apply_config_section(args, data_config, data_section_name, parser)
         
-        print(f"正在加载主 profile [{args.profile}] 的配置...")
-        apply_config_section(args, config, args.profile, parser)
+        print(f"正在加载主 profile [{profile_name}] from train_config.ini...")
+        apply_config_section(args, train_config, profile_name, parser)
 
     else:
         print("未指定 --profile，将仅使用命令行参数或代码中的默认值。")
@@ -615,7 +625,7 @@ def main():
     args.model_str = args.model
     args.current_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     log_parent_dir = "logger"
-    log_filename = f'{args.algorithm}_{args.model_str}_{original_dataset_name}_{args.current_date}.log'
+    log_filename = f'{args.profile}.log'
     log_save_path = os.path.join(log_parent_dir, log_filename)
     logging.basicConfig(
         filename=log_save_path,

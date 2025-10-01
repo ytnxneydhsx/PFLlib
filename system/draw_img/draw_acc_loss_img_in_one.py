@@ -47,14 +47,15 @@ def plot_logs(log_files, custom_labels):
 
 if __name__ == '__main__':
     log_file_paths = [
-    '/mnt/tjl/PFLlib/system/logger/SLCDACP/VGG16/Cifar10/alpha_1.0/fixed_alpha/purning_min_0.6/purning_base_0.6/purning_max_0.6/lr_0.0003/split_model_cnt_2/0.0/time_2025-09-20_20-10-29/SLCDACP_VGG16_Cifar10_2025-09-20_20-10-29.log',
-    '/mnt/tjl/PFLlib/system/logger/SLCDACP/VGG16/Cifar10/alpha_1.0/fixed_alpha/purning_min_0.6/purning_base_0.6/purning_max_0.6/lr_0.0003/split_model_cnt_2/0.5/time_2025-09-20_20-10-34/SLCDACP_VGG16_Cifar10_2025-09-20_20-10-34.log',
-    '/mnt/tjl/PFLlib/system/logger/SLCDACP/VGG16/Cifar10/alpha_1.0/fixed_alpha/purning_min_0.6/purning_base_0.6/purning_max_0.6/lr_0.0003/split_model_cnt_2/1.0/time_2025-09-20_20-10-39/SLCDACP_VGG16_Cifar10_2025-09-20_20-10-39.log'
+       '/mnt/tjl/PFLlib/system/logger/SLCDACP/VGG16/Cifar10/alpha_0.5/fixed_alpha/purning_min_0.5/purning_base_0.5/purning_max_0.5/batch_size128/lr_0.001/global_rounds100.0/split_model_cnt_4/0.0/time_2025-09-23_21-32-57/SLCDACP_VGG16_Cifar10_2025-09-23_21-32-57.log',
+       '/mnt/tjl/PFLlib/system/logger/SLCDACP/VGG16/Cifar10/alpha_0.5/fixed_alpha/purning_min_0.5/purning_base_0.5/purning_max_0.5/batch_size128/lr_0.001/global_rounds100.0/split_model_cnt_4/1.0/time_2025-09-23_21-33-02/SLCDACP_VGG16_Cifar10_2025-09-23_21-33-02.log',
 
     ]
     
     # 在这里定义你想要的自定义名称，顺序要和文件列表对应
-    custom_labels = ['0.0','0.5','1']
+    custom_labels = ['0.0','1.0']
 
     # 将自定义名称列表传递给函数
     plot_logs(log_file_paths, custom_labels)
+    
+
