@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# --- Self-locating and setup ---
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+STATUS_FILE="$SCRIPT_DIR/tmp/training_status.log"
+mkdir -p "$SCRIPT_DIR/tmp"
+# ------------------------------
+
 # 获取 Conda 根目录，并加载初始化脚本
 # 根据你的 'which conda' 输出，你的 Conda 根目录是 /home/yons/anaconda3
 source /home/yons/anaconda3/etc/profile.d/conda.sh
@@ -18,21 +24,15 @@ PYTHON_SCRIPT="main.py"
 
 # 定义所有配置名称
 CONFIGS=(
-    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.9"
-    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.8"
-    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.7"
-    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.6"
-    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.5"
-    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.4"
-    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.3"
-    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.2"
-    "SLCS_VGG16_Cifar10_alpha_0.8_data_Pruning_rate_0.1"
+    "49b3db2c8df80737266ad1bae48405df6f3a2519"
+    "4d5f101f1eef4921a30110cee9ac8a10a2fcd31f"
+    "4ec88b017ccfb4a50ea050f9b1c591345b2a1729"
+    "35533d78667ec01f9d5dad6e1466974c06877486"
 )
 
 # 每批次运行的任务数量
-BATCH_SIZE=3
+BATCH_SIZE=4
 
-# 循环遍历所有配置，每批次启动3个任务
 for ((i=0; i<${#CONFIGS[@]}; i+=BATCH_SIZE))
 do
     echo "--- Starting a new batch of jobs ---"
@@ -47,6 +47,8 @@ do
             log_file="job_${config_name}.log"
             
             echo "Starting job with config: $config_name"
+            # Write current config to status file for the UI to read
+            echo "$config_name" > "$STATUS_FILE"
             python "$PYTHON_SCRIPT" -pro "$config_name" > "$log_file" 2>&1 &
 
             # 在启动下一个任务前，等待5秒
@@ -63,3 +65,5 @@ do
 done
 
 echo "--- All jobs finished ---"
+# Clear the status file to indicate completion
+> "$STATUS_FILE"

@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from sklearn.preprocessing import label_binarize
 from sklearn import metrics
 from utils.data_utils import read_client_data
+from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 
 
 class Client(object):
@@ -30,6 +31,7 @@ class Client(object):
         self.learning_rate = args.local_learning_rate
         self.local_epochs = args.local_epochs
         self.few_shot = args.few_shot
+        self.pruning_tool_name=args.prune_tool
 
         # check BatchNorm
         self.has_BatchNorm = False
@@ -45,14 +47,33 @@ class Client(object):
 
         self.loss = nn.CrossEntropyLoss()
         if self.optimizer_str=="SGD":
-            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=5e-4)
+            if self.pruning_tool_name=="default_mask_grad_momentum_0.7":
+                self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.7, weight_decay=5e-4)
+            else:
+                self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=5e-4)
         elif self.optimizer_str=="Adam":
             self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.learning_rate, betas=(0.9, 0.999), weight_decay=1e-4)
-        self.learning_rate_scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            optimizer=self.optimizer, 
-            gamma=args.learning_rate_decay_gamma
-        )
-        self.learning_rate_decay = args.learning_rate_decay
+        if self.pruning_tool_name =='default_mask_grad_scheduler':
+            warmup_scheduler = LinearLR(
+                self.optimizer, 
+                start_factor=0.01, # 从 BASE_LR * 0.01 开始
+                total_iters=5
+            )
+            main_scheduler = CosineAnnealingLR(
+                self.optimizer, 
+                T_max=200 - 5,
+                eta_min=0  # 学习率最低会降到0
+            )
+            self.scheduler = SequentialLR(
+                self.optimizer, 
+                schedulers=[warmup_scheduler, main_scheduler], 
+                milestones=[5]
+            )
+        # self.learning_rate_scheduler = torch.optim.lr_scheduler.ExponentialLR(
+        #     optimizer=self.optimizer, 
+        #     gamma=args.learning_rate_decay_gamma
+        # )
+        # self.learning_rate_decay = args.learning_rate_decay
 
         self.args= args
 
