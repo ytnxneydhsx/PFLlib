@@ -2,25 +2,67 @@ import torch
 from itertools import combinations
 import random
 
+class UniformQuantizationWithPruningRate(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input_tensor, pruning_rate=0.1):
+        compression_ratio = 1.0 - pruning_rate
+        original_bits = 32
+        quantized_bits = max(1, round(original_bits * compression_ratio))
+        ctx.quantized_bits = quantized_bits
+        min_val = input_tensor.min()
+        max_val = input_tensor.max()
+        if max_val == min_val:
+            return input_tensor
+        num_levels = 2**quantized_bits
+        scale = (max_val - min_val) / (num_levels - 1)
+        quantized_tensor = torch.round((input_tensor - min_val) / scale)
+        dequantized_tensor = quantized_tensor * scale + min_val
+        return dequantized_tensor
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        quantized_bits = ctx.quantized_bits
+        if grad_output is None:
+            return None, None
+        min_val = grad_output.min()
+        max_val = grad_output.max()
+        if max_val == min_val:
+            return grad_output, None
+        num_levels = 2**quantized_bits
+        scale = (max_val - min_val) / (num_levels - 1)
+        quantized_grad = torch.round((grad_output - min_val) / scale)
+        dequantized_grad = quantized_grad * scale + min_val
+        return dequantized_grad, None
+
+uniform_quantize_by_pruning = UniformQuantizationWithPruningRate.apply
+
+
 class channelstoolcdacp:
 
-    def __init__(self, args, total_batches, device='cuda' if torch.cuda.is_available() else 'cpu'):
+    def __init__(self, args, total_batches, one_round_batches, device='cuda' if torch.cuda.is_available() else 'cpu'):
         self.total_batches = total_batches
+        self.one_round_batches = one_round_batches
         self.base_rate = args.purning_base
         self.p_min = args.purning_min
         self.p_max = args.purning_max
         self.device = device
-        self.historical_channel_scores = None
+        
+        self.historical_scores = None
+        
         self.historical_batch_quality = None
         self.current_batch_idx = 0
         self.channel_kept_counts = None
-        self.historical_channel_scores_division = None
         self.recent_channel_scores = []
         self.recent_batch_qualities = []
         self.recent_batch_qualities_for_rate = []
         self.recent_channel_scores_100 = []
         self.last_generated_mask = None
-    
+        self.fixed_pruning_indices = None
+        
+        self._batch_history_for_1_round = []
+        self._batch_history_for_2_round = []
+        self._batch_history_for_10_round = []
+
     def get_last_mask(self):
         return self.last_generated_mask
 
@@ -45,6 +87,7 @@ class channelstoolcdacp:
         return final_mask.view(1, -1, 1, 1)
 
     def _update_pruning_stats(self, mask):
+        if mask is None: return
         num_channels = mask.shape[1]
         if self.channel_kept_counts is None:
             self.channel_kept_counts = torch.zeros(num_channels, device=self.device)
@@ -134,22 +177,22 @@ class channelstoolcdacp:
 
     def _update_and_get_composite_scores(self, feature_maps, labels):
         instantaneous_scores = self._calculate_instantaneous_scores(feature_maps, labels)
-        if self.historical_channel_scores is None:
-            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
-        historical_avg = self.historical_channel_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+        historical_avg = self.historical_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
         alpha = 1.0 - (self.current_batch_idx / self.total_batches)
         composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
-        self.historical_channel_scores += instantaneous_scores
+        self.historical_scores += instantaneous_scores
         return composite_scores
         
     def _update_and_get_composite_scores_division(self, feature_maps, labels):
         instantaneous_scores = self._calculate_instantaneous_scores_division(feature_maps, labels)
-        if self.historical_channel_scores_division is None:
-            self.historical_channel_scores_division = torch.zeros_like(instantaneous_scores)
-        historical_avg = self.historical_channel_scores_division / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+        historical_avg = self.historical_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
         alpha = 1.0 - (self.current_batch_idx / self.total_batches)
         composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
-        self.historical_channel_scores_division += instantaneous_scores
+        self.historical_scores += instantaneous_scores
         return composite_scores
         
     def _update_and_get_composite_scores_recent_10(self, feature_maps, labels):
@@ -161,9 +204,9 @@ class channelstoolcdacp:
             historical_avg = torch.zeros_like(instantaneous_scores)
         else:
             historical_avg = torch.mean(torch.stack(self.recent_channel_scores), dim=0)
-        if self.historical_channel_scores is None:
-            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
-        self.historical_channel_scores += instantaneous_scores
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+        self.historical_scores += instantaneous_scores
         alpha = 1.0 - (self.current_batch_idx / self.total_batches)
         composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
         return composite_scores
@@ -177,9 +220,9 @@ class channelstoolcdacp:
             historical_avg = torch.zeros_like(instantaneous_scores)
         else:
             historical_avg = torch.mean(torch.stack(self.recent_channel_scores_100), dim=0)
-        if self.historical_channel_scores is None:
-            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
-        self.historical_channel_scores += instantaneous_scores
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+        self.historical_scores += instantaneous_scores
         alpha = 1.0 - (self.current_batch_idx / self.total_batches)
         composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
         return composite_scores
@@ -216,10 +259,38 @@ class channelstoolcdacp:
         mask[channels_to_prune] = 0
         return mask.view(1, -1, 1, 1)
 
-    def prune_channels(self, feature_maps, labels):
+    def default_recent_10_rounds_mask_grad(self, feature_maps, labels):
         feature_maps = feature_maps.to(self.device)
         labels = labels.to(self.device)
-        composite_scores = self._update_and_get_composite_scores(feature_maps.detach(), labels)
+        window_size_in_batches = self.one_round_batches * 10
+        batch_history = self._batch_history_for_10_round
+        instantaneous_scores = self._calculate_instantaneous_scores(feature_maps.detach(), labels)
+        batch_history.append(instantaneous_scores)
+        if window_size_in_batches > 0 and len(batch_history) > window_size_in_batches:
+            batch_history.pop(0)
+        historical_avg = torch.mean(torch.stack(batch_history), dim=0) if batch_history else torch.zeros_like(instantaneous_scores)
+        alpha = 1.0 - (self.current_batch_idx / self.total_batches)
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
+        pruning_rate = self._calculate_pruning_rate(composite_scores)
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        self.current_batch_idx += 1
+        self.last_generated_mask = mask
+        return pruned_feature_maps, pruning_rate
+        
+    def default_recent_1_rounds_mask_grad(self, feature_maps, labels):
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        window_size_in_batches = self.one_round_batches * 1
+        batch_history = self._batch_history_for_1_round
+        instantaneous_scores = self._calculate_instantaneous_scores(feature_maps.detach(), labels)
+        batch_history.append(instantaneous_scores)
+        if window_size_in_batches > 0 and len(batch_history) > window_size_in_batches:
+            batch_history.pop(0)
+        historical_avg = torch.mean(torch.stack(batch_history), dim=0) if batch_history else torch.zeros_like(instantaneous_scores)
+        alpha = 1.0 - (self.current_batch_idx / self.total_batches)
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
         pruning_rate = self._calculate_pruning_rate(composite_scores)
         mask = self._get_mask_for_batch(composite_scores, pruning_rate)
         self._update_pruning_stats(mask)
@@ -228,7 +299,7 @@ class channelstoolcdacp:
         self.last_generated_mask = mask
         return pruned_feature_maps, pruning_rate
 
-    def default_mask_no_gradient(self, feature_maps, labels):
+    def prune_channels(self, feature_maps, labels):
         feature_maps = feature_maps.to(self.device)
         labels = labels.to(self.device)
         composite_scores = self._update_and_get_composite_scores(feature_maps.detach(), labels)
@@ -248,11 +319,7 @@ class channelstoolcdacp:
         self.recent_batch_qualities.append(current_batch_quality.detach())
         if len(self.recent_batch_qualities) > 100:
             self.recent_batch_qualities.pop(0)
-        if not self.recent_batch_qualities:
-            recent_avg_quality = current_batch_quality
-        else:
-            recent_qualities_tensor = torch.stack(self.recent_batch_qualities)
-            recent_avg_quality = torch.mean(recent_qualities_tensor)
+        recent_avg_quality = torch.mean(torch.stack(self.recent_batch_qualities)) if self.recent_batch_qualities else current_batch_quality
         p_schedule = self.p_min + (self.p_max - self.p_min) * (self.current_batch_idx / self.total_batches)
         if recent_avg_quality > 0 and current_batch_quality < 0:
             pruning_rate = self.p_max
@@ -277,11 +344,7 @@ class channelstoolcdacp:
         self.recent_batch_qualities_for_rate.append(current_batch_quality.detach())
         if len(self.recent_batch_qualities_for_rate) > 100:
             self.recent_batch_qualities_for_rate.pop(0)
-        if not self.recent_batch_qualities_for_rate:
-            recent_avg_quality = current_batch_quality
-        else:
-            recent_qualities_tensor = torch.stack(self.recent_batch_qualities_for_rate)
-            recent_avg_quality = torch.mean(recent_qualities_tensor)
+        recent_avg_quality = torch.mean(torch.stack(self.recent_batch_qualities_for_rate)) if self.recent_batch_qualities_for_rate else current_batch_quality
         p_schedule = self.p_min + (self.p_max - self.p_min) * (self.current_batch_idx / self.total_batches)
         if recent_avg_quality > 0 and current_batch_quality < 0:
             pruning_rate = self.p_max
@@ -338,10 +401,10 @@ class channelstoolcdacp:
         feature_maps = feature_maps.to(self.device)
         labels = labels.to(self.device)
         instantaneous_scores = self._calculate_instantaneous_scores(feature_maps.detach(), labels)
-        if self.historical_channel_scores is None:
-            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
-        self.historical_channel_scores += instantaneous_scores
-        historical_avg_scores = self.historical_channel_scores / (self.current_batch_idx + 1)
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+        self.historical_scores += instantaneous_scores
+        historical_avg_scores = self.historical_scores / (self.current_batch_idx + 1)
         pruning_rate = self._calculate_pruning_rate(historical_avg_scores)
         mask = self._get_mask_for_batch(historical_avg_scores, pruning_rate)
         self._update_pruning_stats(mask)
@@ -354,9 +417,9 @@ class channelstoolcdacp:
         feature_maps = feature_maps.to(self.device)
         labels = labels.to(self.device)
         instantaneous_scores = self._calculate_instantaneous_scores(feature_maps.detach(), labels)
-        if self.historical_channel_scores is None:
-            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
-        self.historical_channel_scores += instantaneous_scores
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+        self.historical_scores += instantaneous_scores
         pruning_rate = self._calculate_pruning_rate(instantaneous_scores)
         mask = self._get_mask_for_batch(instantaneous_scores, pruning_rate)
         self._update_pruning_stats(mask)
@@ -369,13 +432,11 @@ class channelstoolcdacp:
         feature_maps = feature_maps.to(self.device)
         labels = labels.to(self.device)
         instantaneous_scores = self._calculate_instantaneous_scores(feature_maps.detach(), labels)
-        if self.historical_channel_scores is None:
-            self.historical_channel_scores = torch.zeros_like(instantaneous_scores)
-            historical_avg = torch.zeros_like(instantaneous_scores)
-        else:
-            historical_avg = self.historical_channel_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+        historical_avg = self.historical_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
         composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
-        self.historical_channel_scores += instantaneous_scores
+        self.historical_scores += instantaneous_scores
         pruning_rate = self._calculate_pruning_rate(composite_scores)
         mask = self._get_mask_for_batch(composite_scores, pruning_rate)
         self._update_pruning_stats(mask)
@@ -506,4 +567,364 @@ class channelstoolcdacp:
         self._update_pruning_stats(mask_4d)
         pruned_feature_maps = feature_maps * mask_4d
         self.last_generated_mask = mask_4d
+        return pruned_feature_maps, pruning_rate
+    
+    def _update_and_get_composite_scores_std(self, feature_maps):
+        instantaneous_scores = torch.std(feature_maps.detach(), dim=[0, 2, 3])
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+        historical_avg = self.historical_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        alpha = 1.0 - (self.current_batch_idx / self.total_batches)
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
+        self.historical_scores += instantaneous_scores
+        return composite_scores
+    
+    def prune_batch_STD(self, feature_maps, labels):
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        composite_scores = self._update_and_get_composite_scores_std(feature_maps)
+        pruning_rate = self._calculate_pruning_rate(composite_scores)
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        self.current_batch_idx += 1
+        self.last_generated_mask = mask
+        return pruned_feature_maps, pruning_rate
+    
+    def prune_by_uniform_quantization(self, feature_maps, labels=None):
+        pruning_rate = self.base_rate 
+        if pruning_rate == 0.0:
+            return feature_maps, 0.0
+        pruned_feature_maps = uniform_quantize_by_pruning(feature_maps, pruning_rate)
+        self.last_generated_mask = None 
+        return pruned_feature_maps, pruning_rate
+        
+    def _update_and_get_composite_scores_value(self, feature_maps):
+        instantaneous_scores = torch.sum(feature_maps.detach().pow(2), dim=[0, 2, 3])
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+        historical_avg = self.historical_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        alpha = 1.0 - (self.current_batch_idx / self.total_batches)
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
+        self.historical_scores += instantaneous_scores
+        return composite_scores
+
+    def prune_batch_value(self, feature_maps, labels):
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        composite_scores = self._update_and_get_composite_scores_value(feature_maps)
+        pruning_rate = self._calculate_pruning_rate(composite_scores)
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        self.current_batch_idx += 1
+        self.last_generated_mask = mask
+        return pruned_feature_maps, pruning_rate
+        
+    def prune_channels_fixed_random(self, feature_maps, labels=None):
+        feature_maps = feature_maps.to(self.device)
+        N, C, H, W = feature_maps.shape
+        pruning_rate = self.base_rate
+        if self.fixed_pruning_indices is None:
+            print("--- [首次运行] 固定随机剪枝策略初始化 ---")
+            num_to_prune = int(pruning_rate * C)
+            if num_to_prune > 0:
+                all_channel_indices = list(range(C))
+                self.fixed_pruning_indices = random.sample(all_channel_indices, num_to_prune)
+                print(f"总通道数: {C}, 剪枝率: {pruning_rate:.2f}, 计划剪枝: {num_to_prune} 个通道。")
+            else:
+                print("剪枝数量为0，不进行任何剪枝。")
+                self.fixed_pruning_indices = []
+        if self.fixed_pruning_indices and len(self.fixed_pruning_indices) > 0:
+            mask_1d = torch.ones(C, device=self.device)
+            mask_1d[self.fixed_pruning_indices] = 0
+            mask = mask_1d.view(1, C, 1, 1)
+        else:
+            mask = torch.ones(1, C, 1, 1, device=self.device)
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        self.last_generated_mask = mask
+        return pruned_feature_maps, pruning_rate
+
+    # ================================================================= #
+    # ==================== 新增剪枝方法 (纯添加) ======================== #
+    # ================================================================= #
+    
+    def _calculate_instantaneous_scores_dot(self, feature_maps, labels, temperature=0.1):
+        """
+        [新增] 基于点积相似度计算瞬时分数，并使用Softmax进行非线性归一化。
+        此版本为纯新增，不更改任何原有代码。
+        """
+        num_channels = feature_maps.shape[1]
+        classes = torch.unique(labels)
+
+        if len(classes) < 2:
+            return torch.zeros(num_channels, device=self.device)
+
+        # 将特征图展平以便进行点积运算
+        feature_maps_vec = feature_maps.view(feature_maps.shape[0], num_channels, -1)
+
+        # --- 计算类中心 ---
+        centroids = {}
+        for c in classes:
+            class_indices = (labels == c).nonzero(as_tuple=True)[0]
+            centroids[c.item()] = torch.mean(feature_maps_vec[class_indices], dim=0)
+
+        # --- 重新定义: 类内紧凑度 (Intra-Class Compactness) ---
+        intra_class_scores = torch.zeros(num_channels, device=self.device)
+        for c in classes:
+            c_item = c.item()
+            class_indices = (labels == c).nonzero(as_tuple=True)[0]
+            class_feature_maps_vec = feature_maps_vec[class_indices]
+            centroid_vec = centroids[c_item].unsqueeze(0)
+            dot_products = torch.mean(torch.sum(class_feature_maps_vec * centroid_vec, dim=2), dim=0)
+            intra_class_scores += dot_products
+        
+        intra_class_scores /= len(classes)
+
+        # --- 重新定义: 类间分离度 (Inter-Class Separability) ---
+        inter_class_scores = torch.zeros(num_channels, device=self.device)
+        class_ids = [c.item() for c in classes]
+        
+        if len(class_ids) > 1:
+            num_pairs = 0
+            for c1, c2 in combinations(class_ids, 2):
+                centroid1_vec = centroids[c1]
+                centroid2_vec = centroids[c2]
+                dot_product_centroids = torch.sum(centroid1_vec * centroid2_vec, dim=1)
+                inter_class_scores += dot_product_centroids
+                num_pairs += 1
+            inter_class_scores /= num_pairs
+
+        # --- 最终瞬时分数 ---
+        instantaneous_scores = intra_class_scores - inter_class_scores
+        
+        # --- 使用带温度的Softmax进行归一化 ---
+        if temperature > 0:
+            normalized_scores = torch.nn.functional.softmax(instantaneous_scores / temperature, dim=0)
+        else: # 避免除以零
+            normalized_scores = torch.nn.functional.softmax(instantaneous_scores, dim=0)
+            
+        return normalized_scores
+
+    def _update_and_get_composite_scores_dot(self, feature_maps, labels, temperature):
+        """
+        [新增] 调用新的点积评分标准，并结合历史分数。
+        """
+        instantaneous_scores = self._calculate_instantaneous_scores_dot(feature_maps, labels, temperature)
+        
+        # 复用已有的 self.historical_scores 属性
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+
+        historical_avg = self.historical_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        
+        alpha = 1.0 - (self.current_batch_idx / self.total_batches)
+        
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
+        
+        self.historical_scores += instantaneous_scores
+        return composite_scores
+
+    def prune_channels_dot(self, feature_maps, labels, temperature=0.1):
+        """
+        [新增] 最终对外调用的新剪枝方法，名为 prune_channels_dot。
+        完全不影响任何原有代码。
+        """
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        
+        # 调用全新的、独立的评分和组合函数
+        composite_scores = self._update_and_get_composite_scores_dot(feature_maps.detach(), labels, temperature)
+        
+        # 复用已有的剪枝率计算和掩码生成逻辑
+        pruning_rate = self._calculate_pruning_rate(composite_scores)
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        
+        self.current_batch_idx += 1
+        self.last_generated_mask = mask
+        return pruned_feature_maps, pruning_rate
+
+
+
+        # ================================================================= #
+    # ============ 新增剪枝方法 (Min-Max Dot Product) =================== #
+    # ================================================================= #
+    
+    def _calculate_instantaneous_scores_dot_min_max(self, feature_maps, labels):
+        """
+        [新增] 基于点积相似度计算瞬时分数，并使用 Min-Max 进行线性归一化。
+        此版本为 prune_channels_dot 的变体。
+        """
+        num_channels = feature_maps.shape[1]
+        classes = torch.unique(labels)
+
+        if len(classes) < 2:
+            return torch.zeros(num_channels, device=self.device)
+
+        # 将特征图展平以便进行点积运算
+        feature_maps_vec = feature_maps.view(feature_maps.shape[0], num_channels, -1)
+
+        # --- 计算类中心 ---
+        centroids = {}
+        for c in classes:
+            class_indices = (labels == c).nonzero(as_tuple=True)[0]
+            centroids[c.item()] = torch.mean(feature_maps_vec[class_indices], dim=0)
+
+        # --- 计算类内紧凑度 (Intra-Class Compactness) ---
+        intra_class_scores = torch.zeros(num_channels, device=self.device)
+        for c in classes:
+            c_item = c.item()
+            class_indices = (labels == c).nonzero(as_tuple=True)[0]
+            class_feature_maps_vec = feature_maps_vec[class_indices]
+            centroid_vec = centroids[c_item].unsqueeze(0)
+            dot_products = torch.mean(torch.sum(class_feature_maps_vec * centroid_vec, dim=2), dim=0)
+            intra_class_scores += dot_products
+        
+        intra_class_scores /= len(classes)
+
+        # --- 计算类间分离度 (Inter-Class Separability) ---
+        inter_class_scores = torch.zeros(num_channels, device=self.device)
+        class_ids = [c.item() for c in classes]
+        
+        if len(class_ids) > 1:
+            num_pairs = 0
+            for c1, c2 in combinations(class_ids, 2):
+                centroid1_vec = centroids[c1]
+                centroid2_vec = centroids[c2]
+                dot_product_centroids = torch.sum(centroid1_vec * centroid2_vec, dim=1)
+                inter_class_scores += dot_product_centroids
+                num_pairs += 1
+            inter_class_scores /= num_pairs
+
+        # --- 最终瞬时分数 ---
+        instantaneous_scores = intra_class_scores - inter_class_scores
+        
+        # --- 使用 Min-Max 进行归一化 ---
+        min_val = torch.min(instantaneous_scores)
+        max_val = torch.max(instantaneous_scores)
+        
+        # 避免除以零的边界情况
+        if max_val == min_val:
+            return torch.zeros_like(instantaneous_scores)
+            
+        normalized_scores = (instantaneous_scores - min_val) / (max_val - min_val)
+            
+        return normalized_scores
+
+    def _update_and_get_composite_scores_dot_min_max(self, feature_maps, labels):
+        """
+        [新增] 调用新的点积+Min-Max评分标准，并结合历史分数。
+        """
+        instantaneous_scores = self._calculate_instantaneous_scores_dot_min_max(feature_maps, labels)
+        
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+
+        historical_avg = self.historical_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        
+        alpha = 1.0 - (self.current_batch_idx / self.total_batches)
+        
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
+        
+        self.historical_scores += instantaneous_scores
+        return composite_scores
+
+    def prune_channels_dot_min_max(self, feature_maps, labels):
+        """
+        [新增] 最终对外调用的新剪枝方法，名为 prune_channels_dot_min_max。
+        """
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        
+        # 调用全新的、独立的评分和组合函数
+        composite_scores = self._update_and_get_composite_scores_dot_min_max(feature_maps.detach(), labels)
+        
+        # 复用已有的剪枝率计算和掩码生成逻辑
+        pruning_rate = self._calculate_pruning_rate(composite_scores)
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        
+        self.current_batch_idx += 1
+        self.last_generated_mask = mask
+        return pruned_feature_maps, pruning_rate
+
+
+    def _update_and_get_composite_scores_dot_fixed_alpha(self, feature_maps, labels, temperature, alpha):
+        """
+        [新增] 固定 alpha 值的 .dot 变体，用于结合历史分数。
+        """
+        instantaneous_scores = self._calculate_instantaneous_scores_dot(feature_maps, labels, temperature)
+        
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+
+        historical_avg = self.historical_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        
+        # 使用传入的固定 alpha 值，而不是动态计算
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
+        
+        self.historical_scores += instantaneous_scores
+        return composite_scores
+
+    def prune_channels_dot_fixed_alpha(self, feature_maps, labels, temperature=0.1, alpha=0.5):
+        """
+        [新增] 最终对外调用的新剪枝方法，使用固定的 alpha 值和 softmax 归一化。
+        """
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        
+        # 调用使用固定 alpha 的新组合函数
+        composite_scores = self._update_and_get_composite_scores_dot_fixed_alpha(feature_maps.detach(), labels, temperature, alpha)
+        
+        pruning_rate = self._calculate_pruning_rate(composite_scores)
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        
+        self.current_batch_idx += 1
+        self.last_generated_mask = mask
+        return pruned_feature_maps, pruning_rate
+        
+    def _update_and_get_composite_scores_dot_fixed_alpha_min_max(self, feature_maps, labels, alpha):
+        """
+        [新增] 固定 alpha 值的 .dot_min_max 变体，用于结合历史分数。
+        """
+        instantaneous_scores = self._calculate_instantaneous_scores_dot_min_max(feature_maps, labels)
+        
+        if self.historical_scores is None:
+            self.historical_scores = torch.zeros_like(instantaneous_scores)
+
+        historical_avg = self.historical_scores / self.current_batch_idx if self.current_batch_idx > 0 else torch.zeros_like(instantaneous_scores)
+        
+        # 使用传入的固定 alpha 值
+        composite_scores = alpha * instantaneous_scores + (1 - alpha) * historical_avg
+        
+        self.historical_scores += instantaneous_scores
+        return composite_scores
+
+    def prune_channels_dot_fixed_alpha_min_max(self, feature_maps, labels, alpha=0.5):
+        """
+        [新增] 最终对外调用的新剪枝方法，使用固定的 alpha 值和 min-max 归一化。
+        """
+        feature_maps = feature_maps.to(self.device)
+        labels = labels.to(self.device)
+        
+        # 调用使用固定 alpha 的新组合函数
+        composite_scores = self._update_and_get_composite_scores_dot_fixed_alpha_min_max(feature_maps.detach(), labels, alpha)
+        
+        pruning_rate = self._calculate_pruning_rate(composite_scores)
+        mask = self._get_mask_for_batch(composite_scores, pruning_rate)
+        
+        self._update_pruning_stats(mask)
+        pruned_feature_maps = feature_maps * mask
+        
+        self.current_batch_idx += 1
+        self.last_generated_mask = mask
         return pruned_feature_maps, pruning_rate

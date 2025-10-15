@@ -136,15 +136,12 @@ def generate_growth_heatmap_from_log(log_file_path, num_channels_to_plot=None):
 # --- 使用方法 ---
 # 在这里设置您想要分析的前n个通道数量
 # 如果设置为 None，则会绘制所有通道
-CHANNELS_TO_PLOT = 128
+CHANNELS_TO_PLOT = 256
 
 # 您的日志文件列表
 files_to_process = [
     '/mnt/tjl/PFLlib/system/logger/SLCDACP/VGG16/Cifar10/alpha_1.0/fixed_alpha/purning_min_0.6/purning_base_0.6/purning_max_0.6/lr_0.0003/split_model_cnt_2/0.0/time_2025-09-20_20-10-29/SLCDACP_VGG16_Cifar10_2025-09-20_20-10-29.log',
     '/mnt/tjl/PFLlib/system/logger/SLCDACP/VGG16/Cifar10/alpha_1.0/fixed_alpha/purning_min_0.6/purning_base_0.6/purning_max_0.6/lr_0.0003/split_model_cnt_2/0.3/time_2025-09-19_14-37-45/SLCDACP_VGG16_Cifar10_2025-09-19_14-37-45.log',
-    '/mnt/tjl/PFLlib/system/logger/SLCDACP/VGG16/Cifar10/alpha_1.0/fixed_alpha/purning_min_0.6/purning_base_0.6/purning_max_0.6/lr_0.0003/split_model_cnt_2/0.6/time_2025-09-19_02-40-53/SLCDACP_VGG16_Cifar10_2025-09-19_02-40-53.log',
-    '/mnt/tjl/PFLlib/system/logger/SLCDACP/VGG16/Cifar10/alpha_1.0/fixed_alpha/purning_min_0.6/purning_base_0.6/purning_max_0.6/lr_0.0003/split_model_cnt_2/0.9/time_2025-09-19_03-43-18/SLCDACP_VGG16_Cifar10_2025-09-19_03-43-18.log'
-     # Top-K
 ]
 
 # 循环处理每个文件

@@ -160,7 +160,9 @@ def run(args):
 
         elif model_str=="ResNet18":
             if "MNIST" in args.dataset:
-                args.model=ResNet18(ResBasicBlock,10).to(args.device)
+                args.model=ResNet18_MNIST(ResBasicBlock,10).to(args.device)
+            elif "Cifar10" in args.dataset:
+                args.model=ResNet18_CIFAR10(num_classes=10).to(args.device)
 
         elif model_str == "DNN":
             if "MNIST" in args.dataset:
@@ -218,9 +220,13 @@ def run(args):
                                       pool_kernel_size=(1, 2)).to(args.device)
         elif model_str == "VGG16":
             if args.dataset == 'Cifar10':
-                args.model=VGG16_cifar10().to(args.device)
+                args.model=VGG16_cifar10(num_classes=args.num_classes).to(args.device)
+            if args.dataset == 'HAM1000':    
+                args.model=VGG16_HAM1000(num_classes=args.num_classes).to(args.device)
             if args.dataset =='MNIST':
-                args.model=VGG_Simple_MNIST_Blocked().to(args.device)
+                args.model=VGG_Simple_MNIST_Blocked(num_classes=args.num_classes).to(args.device)
+            if args.dataset =='FashionMNIST':
+                args.model=VGG_Simple_FashionMNIST(num_classes=args.num_classes).to(args.device)
         else:
             raise NotImplementedError
         
@@ -572,6 +578,7 @@ def main():
     parser.add_argument('-ddir', '--data_dir', type=str, default='../dataset/')
     parser.add_argument('-ds', '--data_section', type=str, default=None)
     parser.add_argument('-op', '--optimizer_str', type=str, default=None)
+    parser.add_argument('-tsd', '--train_seed', type=int, default=None)
     args = parser.parse_args()
 
     if args.profile:
@@ -643,7 +650,7 @@ def main():
     print("=" * 50)
     logging.info("=" * 50)
     
-    set_deterministic_seeds(42)
+    set_deterministic_seeds(int(args.train_seed))
     total_start = time.time()
     
     run(args)
