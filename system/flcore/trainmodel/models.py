@@ -116,17 +116,17 @@ class FedAvgCNN(nn.Module):
     def __init__(self, in_features=1, num_classes=10, dim=1024):
         super().__init__()
         self.conv1 = nn.Conv2d(in_features,
-                               32,
-                               kernel_size=5,
-                               padding=0,
-                               stride=1,
-                               bias=True)
+                                32,
+                                kernel_size=5,
+                                padding=0,
+                                stride=1,
+                                bias=True)
         self.conv2 = nn.Conv2d(32,
-                               64,
-                               kernel_size=5,
-                               padding=0,
-                               stride=1,
-                               bias=True)
+                                64,
+                                kernel_size=5,
+                                padding=0,
+                                stride=1,
+                                bias=True)
         self.fc1 = nn.Linear(dim, 512)
         self.fc = nn.Linear(512, num_classes)
 
@@ -179,43 +179,6 @@ class SplitCNN(nn.Module):
         out = self.fc1(out)
         out = self.fc2(out)
         return out
-
-# class FedAvgCNN(nn.Module):
-#     """
-#     改造后的 FedAvgCNN 模型，将 flatten 操作封装为 nn.Flatten 模块，
-#     以便模型更具普适性，能够被 split_model 函数正确分割。
-#     """
-#     def __init__(self, in_features=1, num_classes=10, dim=1024):
-#         super().__init__()
-#         self.conv1 = nn.Sequential(
-#             nn.Conv2d(in_features, 32, kernel_size=5, padding=0, stride=1, bias=True),
-#             nn.ReLU(inplace=True),
-#             nn.MaxPool2d(kernel_size=(2, 2))
-#         )
-#         self.conv2 = nn.Sequential(
-#             nn.Conv2d(32, 64, kernel_size=5, padding=0, stride=1, bias=True),
-#             nn.ReLU(inplace=True),
-#             nn.MaxPool2d(kernel_size=(2, 2))
-#         )
-        
-#         # 将 flatten 操作封装为 nn.Flatten 模块
-#         # start_dim=1 表示从批次维度（第0维）之后开始展平
-#         self.flatten = nn.Flatten(start_dim=1) 
-        
-#         self.fc1 = nn.Sequential(
-#             nn.Linear(dim, 512), 
-#             nn.ReLU(inplace=True)
-#         )
-#         self.fc = nn.Linear(512, num_classes)
-
-#     def forward(self, x):
-#         out = self.conv1(x)
-#         out = self.conv2(out)
-#         # 现在通过 self.flatten 模块执行展平操作
-#         out = self.flatten(out) 
-#         out = self.fc1(out)
-#         out = self.fc(out)
-#         return out
 
 # ====================================================================================================================
 
@@ -313,49 +276,6 @@ class CifarNet(nn.Module):
         return x
 
 # ====================================================================================================================
-
-# cfg = {
-#     'VGG11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
-#     'VGG13': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
-#     'VGGbatch_size': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
-#     'VGG19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
-# }
-
-# class VGG(nn.Module):
-#     def __init__(self, vgg_name):
-#         super(VGG, self).__init__()
-#         self.features = self._make_layers(cfg[vgg_name])
-#         self.classifier = nn.Sequential(
-#             nn.Linear(512, 512),
-#             nn.ReLU(True),
-#             nn.Linear(512, 512),
-#             nn.ReLU(True),
-#             nn.Linear(512, 10)
-#         )
-
-#     def forward(self, x):
-#         out = self.features(x)
-#         out = out.view(out.size(0), -1)
-#         out = self.classifier(out)
-#         output = F.log_softmax(out, dim=1)
-#         return output
-
-#     def _make_layers(self, cfg):
-#         layers = []
-#         in_channels = 3
-#         for x in cfg:
-#             if x == 'M':
-#                 layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
-#             else:
-#                 layers += [nn.Conv2d(in_channels, x, kernel_size=3, padding=1),
-#                            nn.BatchNorm2d(x),
-#                            nn.ReLU(inplace=True)]
-#                 in_channels = x
-#         layers += [nn.AvgPool2d(kernel_size=1, stride=1)]
-#         return nn.Sequential(*layers)
-
-# ====================================================================================================================
-
 def init_weights(m):
     classname = m.__class__.__name__
     if classname.find('Conv2d') != -1 or classname.find('ConvTranspose2d') != -1:
@@ -401,39 +321,9 @@ class LeNet(nn.Module):
         return x
 
 # ====================================================================================================================
-
-# class CNNCifar(nn.Module):
-#     def __init__(self, num_classes=10):
-#         super(CNNCifar, self).__init__()
-#         self.conv1 = nn.Conv2d(3, 6, 5)
-#         self.pool = nn.MaxPool2d(2, 2)
-#         self.conv2 = nn.Conv2d(6, batch_size, 5)
-#         self.fc1 = nn.Linear(batch_size * 5 * 5, 120)
-#         self.fc2 = nn.Linear(120, 100)
-#         self.fc3 = nn.Linear(100, num_classes)
-
-#         # self.weight_keys = [['fc1.weight', 'fc1.bias'],
-#         #                     ['fc2.weight', 'fc2.bias'],
-#         #                     ['fc3.weight', 'fc3.bias'],
-#         #                     ['conv2.weight', 'conv2.bias'],
-#         #                     ['conv1.weight', 'conv1.bias'],
-#         #                     ]
-                            
-#     def forward(self, x):
-#         x = self.pool(F.relu(self.conv1(x)))
-#         x = self.pool(F.relu(self.conv2(x)))
-#         x = x.view(-1, batch_size * 5 * 5)
-#         x = F.relu(self.fc1(x))
-#         x = F.relu(self.fc2(x))
-#         x = self.fc3(x)
-#         x = F.log_softmax(x, dim=1)
-#         return x
-
-# ====================================================================================================================
-
 class LSTMNet(nn.Module):
     def __init__(self, hidden_dim, num_layers=2, bidirectional=False, dropout=0.2, 
-                padding_idx=0, vocab_size=98635, num_classes=10):
+                 padding_idx=0, vocab_size=98635, num_classes=10):
         super().__init__()
 
         self.dropout = nn.Dropout(dropout)
@@ -501,7 +391,7 @@ class fastText(nn.Module):
 
 class TextCNN(nn.Module):
     def __init__(self, hidden_dim, num_channels=100, kernel_size=[3,4,5], max_len=200, dropout=0.8, 
-                padding_idx=0, vocab_size=98635, num_classes=10):
+                 padding_idx=0, vocab_size=98635, num_classes=10):
         super(TextCNN, self).__init__()
         
         # Embedding Layer
@@ -550,20 +440,6 @@ class TextCNN(nn.Module):
         return out
 
 # ====================================================================================================================
-
-
-# class linear(Function):
-#   @staticmethod
-#   def forward(ctx, input):
-#     return input
-  
-#   @staticmethod
-#   def backward(ctx, grad_output):
-#     return grad_output
-
-
-
-
 class VGG16_cifar10(nn.Module):
     def __init__(self, num_classes=10):
         super().__init__()
@@ -654,7 +530,6 @@ class VGG16_cifar10(nn.Module):
             nn.Flatten(),
         )
         
-
         self.fc1 = nn.Sequential(
             #14
             nn.Linear(512,4096),
@@ -673,7 +548,6 @@ class VGG16_cifar10(nn.Module):
             )
 
     def forward(self, x):
-        # 1. 依次通过所有的卷积层块
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
@@ -687,14 +561,200 @@ class VGG16_cifar10(nn.Module):
         x = self.conv11(x)
         x = self.conv12(x)
         x = self.conv13(x)
-        # 3. 依次通过所有的全连接层块
         x = self.fc1(x)
         x = self.fc2(x)
         x = self.fc3(x)
         
-        # 4. 返回最终的输出
         return x
-    
+
+
+class VGG_Simple_FashionMNIST(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+
+        # Block 1
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+        )
+        # Block 2
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2, stride=2), # 28x28 -> 14x14
+        )
+        # Block 3
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+        )
+        # Block 4
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2, stride=2), # 14x14 -> 7x7
+        )
+        # Block 5
+        self.conv5 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2, stride=2), # 7x7 -> 3x3
+        )
+
+        self.fc1 = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(256 * 3 * 3, 256),
+            nn.ReLU(True),
+            nn.Dropout(0.5),
+        )
+        
+        self.fc2 = nn.Sequential(
+            nn.Linear(256, num_classes),
+        )
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x) 
+        x = self.fc1(x)
+        x = self.fc2(x)
+        
+        return x
+
+
+class VGG16_HAM1000(nn.Module):
+    def __init__(self, num_classes=7):
+        super().__init__()
+
+        #1
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(3,64,kernel_size=3,padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+        )
+        #2
+        self.conv2= nn.Sequential(
+            nn.Conv2d(64,64,kernel_size=3,padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+        )
+        #3
+        self.conv3= nn.Sequential(
+            nn.Conv2d(64,128,kernel_size=3,padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+        )
+        #4
+        self.conv4= nn.Sequential(
+            nn.Conv2d(128,128,kernel_size=3,padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+        )
+        #5
+        self.conv5= nn.Sequential(
+            nn.Conv2d(128,256,kernel_size=3,padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+        )
+        #6
+        self.conv6= nn.Sequential(
+            nn.Conv2d(256,256,kernel_size=3,padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+        )
+        #7
+        self.conv7= nn.Sequential(
+            nn.Conv2d(256,256,kernel_size=3,padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+        )
+        #8
+        self.conv8= nn.Sequential(
+            nn.Conv2d(256,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+        )
+        #9
+        self.conv9= nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+        )
+        #10
+        self.conv10= nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+        )
+        #11
+        self.conv11= nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+        )
+        #12
+        self.conv12= nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+        )
+        
+        self.conv13 = nn.Sequential(
+            nn.Conv2d(512,512,kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+            nn.MaxPool2d(kernel_size=2,stride=2),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+        )
+        
+        self.fc1 = nn.Sequential(
+            nn.Linear(512,4096),
+            nn.ReLU(True),
+            nn.Dropout(p=0.6),
+        )
+        #15
+        self.fc2 = nn.Sequential(
+            nn.Linear(4096, 4096),
+            nn.ReLU(True),
+            nn.Dropout(p=0.6),
+        )
+        #16
+        self.fc3 = nn.Sequential( 
+            nn.Linear(4096,num_classes),
+        )
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
+        x = self.conv6(x)
+        x = self.conv7(x)
+        x = self.conv8(x)
+        x = self.conv9(x)
+        x = self.conv10(x)
+        x = self.conv11(x)
+        x = self.conv12(x)
+        x = self.conv13(x)
+        x = self.fc1(x)
+        x = self.fc2(x)
+        x = self.fc3(x)
+        
+        return x
+
 class VGG_Simple_MNIST_Blocked(nn.Module):
     def __init__(self, num_classes=10):
         super().__init__()
@@ -722,7 +782,6 @@ class VGG_Simple_MNIST_Blocked(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
         
-        # 将 Flatten 操作集成到 fc1 中
         self.fc1 = nn.Sequential(
             nn.Flatten(),
             nn.Linear(64 * 7 * 7, 256),
@@ -744,28 +803,36 @@ class VGG_Simple_MNIST_Blocked(nn.Module):
         
         return x
 
-#---------------restnet18------------
+# ====================================================================================================================
+# ResNet Section
+# ====================================================================================================================
+
 class ResBasicBlock(nn.Module):
-    expansion = 1 # 基础块的输出通道是输入通道的 1 倍
+    """
+    标准的ResNet基础残差块 (对应18层和34层)。
+    包含两个3x3的卷积层。
+    """
+    expansion = 1  # 输出通道数相对于输入通道数的扩展倍数
 
     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(ResBasicBlock, self).__init__()
-        # 第一个 3x3 卷积层
+        
+        # 主路径的第一个卷积层
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
         
-        # 第二个 3x3 卷积层
-        self.conv2 = nn.Conv2d(out_channels, out_channels * self.expansion, kernel_size=3, padding=1, bias=False)
+        # 主路径的第二个卷积层
+        self.conv2 = nn.Conv2d(out_channels, out_channels * self.expansion, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels * self.expansion)
         
-        # downsample 层用于处理残差连接的维度不匹配问题
-        # 通常在每个阶段的第一个块需要下采样时用到
-        self.downsample = downsample 
+        # 快捷连接（shortcut）的下采样层
+        self.downsample = downsample
 
     def forward(self, x):
-        identity = x # 保存原始输入用于残差连接
+        identity = x  # 保存输入，用于残差连接
 
+        # 主路径
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
@@ -773,74 +840,48 @@ class ResBasicBlock(nn.Module):
         out = self.conv2(out)
         out = self.bn2(out)
 
-        # 如果存在 downsample 层，对 identity 进行变换
+        # 如果需要下采样，则对identity进行变换
         if self.downsample is not None:
-            identity = self.downsample(identity)
+            identity = self.downsample(x)
 
-        out += identity # 残差连接：F(x) + x
+        # 残差连接
+        out += identity
         out = self.relu(out)
 
         return out
 
-# --- 2. 定义 ResNet 主体结构 ---
-class ResNet18(nn.Module):
-    def __init__(self, block, num_classes): # num_classes 默认为 10 (MNIST)
-        super(ResNet18, self).__init__()
-        self.in_channels = 64 # 初始卷积层的输出通道数
+
+class ResNet18_MNIST(nn.Module):
+    def __init__(self, block, num_classes=10):
+        super(ResNet18_MNIST, self).__init__()
+        self.in_channels = 64
         layers=[2, 2, 2, 2]
-        # 1. 初始层 (Input Stem)
-        # 核心修改：第一个卷积层的输入通道改为 1 (for grayscale MNIST)
-        # 卷积核大小保持为 7x7，步长 2
+        
+        # 1. 初始层 (Input Stem) for MNIST
         self.conv1= nn.Sequential(
             nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         )
+        
         # 2. 残差块阶段
-        # layers 参数定义了每个阶段的块数量，对于 ResNet-18 是 [2, 2, 2, 2]
-        current_in_channels = 64 # 初始层输出的通道数
+        current_in_channels = 64
         
-        # 为了将 layer1, layer2, layer3, layer4 放入一个 Sequential
-        # 我们需要先分别创建它们，因为 _make_layer 内部需要更新 current_in_channels
-        
-        # Stage 1 (Conv2_x)
-        # _make_layer 负责处理 downsample 参数和更新 in_channels
-        # 这里传入 False 给 make_layer 的 is_first_layer_in_stage 来区分是否需要 downsample
-        self.conv2_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 64, layers[0], False)
-
-        self.conv3_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 128, layers[1], True)
-
-        self.conv4_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 256, layers[2], True)
-
-        self.conv5_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 512, layers[3], True)
+        self.conv2_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 64, layers[0], stride=1)
+        self.conv3_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 128, layers[1], stride=2)
+        self.conv4_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 256, layers[2], stride=2)
+        self.conv5_res, current_in_channels = self._make_layer_sequential(block, current_in_channels, 512, layers[3], stride=2)
 
         # 3. 最终分类层 (Classification Head)
-
         self.fc = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)), # 全局平均池化到 1x1
+            nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(start_dim=1), 
             nn.Linear(512 * block.expansion, num_classes) 
-
         )
 
-
-
-    def _make_layer_sequential(self, block, in_channels_prev_stage, out_channels_stage, blocks, is_first_layer_in_stage, stride=1):
-        """
-        构建一个残差阶段 (Stage) 并返回 nn.Sequential 模块和更新后的 in_channels。
-        block: 残差块类型 (例如 BasicBlock)
-        in_channels_prev_stage: 上一个阶段的输出通道数，即当前阶段的输入通道数
-        out_channels_stage: 当前阶段中每个残差块的输出通道数 (不包含 expansion)
-        blocks: 当前阶段包含的残差块数量
-        is_first_layer_in_stage: 是否是整个网络的第一个 make_layer 调用（即 layer1）
-                                 因为 layer1 不会进行通道下采样，只有空间下采样。
-                                 （实际上 stride=1，所以 BasicBlock 也不进行空间下采样）
-        stride: 第一个块的步长，用于下采样
-        """
+    def _make_layer_sequential(self, block, in_channels_prev_stage, out_channels_stage, blocks, stride=1):
         downsample = None
-        # 当 stride != 1 或输入通道与输出通道不匹配时，需要 downsample
-        # 简化的判断逻辑：如果当前阶段的输出通道数与上一个阶段的输出通道数不同，或需要下采样
         if stride != 1 or in_channels_prev_stage != out_channels_stage * block.expansion:
             downsample = nn.Sequential(
                 nn.Conv2d(in_channels_prev_stage, out_channels_stage * block.expansion, kernel_size=1, stride=stride, bias=False),
@@ -848,14 +889,10 @@ class ResNet18(nn.Module):
             )
 
         layers = []
-        # 添加当前阶段的第一个残差块，使用 in_channels_prev_stage 作为输入
         layers.append(block(in_channels_prev_stage, out_channels_stage, stride, downsample))
         
-        # 更新当前阶段内部的 in_channels，用于后续的残差块
-        # 这是当前阶段所有后续块的输入通道，也是这个阶段的最终输出通道
         current_block_in_channels = out_channels_stage * block.expansion 
         
-        # 添加当前阶段的剩余残差块
         for _ in range(1, blocks):
             layers.append(block(current_block_in_channels, out_channels_stage))
 
@@ -863,14 +900,78 @@ class ResNet18(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-
         x = self.conv2_res(x)
         x = self.conv3_res(x)
         x = self.conv4_res(x)
         x = self.conv5_res(x)
+        x = self.fc(x)
+        return x
 
+
+class ResNet18_CIFAR10(nn.Module):
+    def __init__(self, block=ResBasicBlock, num_classes=10):
+        super(ResNet18_CIFAR10, self).__init__()
+        
+        self.in_channels = 64
+        self.layers_config = [2, 2, 2, 2] # ResNet18的配置
+
+        # 1. 初始层 (Input Stem) - 针对CIFAR-10优化
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
+        
+        # 2. 四个残差阶段
+        self.layer1 = self._make_layer(block, 64,  self.layers_config[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, self.layers_config[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, self.layers_config[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, self.layers_config[3], stride=2)
+        
+        # 3. 最终分类层 (Classification Head) - 已合并为一个Sequential容器
+        self.fc = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(start_dim=1),
+            nn.Linear(512 * block.expansion, num_classes)
+        )
+        
+        # 初始化权重
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def _make_layer(self, block, out_channels, num_blocks, stride):
+        """构建一个残差阶段"""
+        downsample = None
+        # 当需要下采样（stride!=1）或通道数不匹配时，创建downsample层
+        if stride != 1 or self.in_channels != out_channels * block.expansion:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.in_channels, out_channels * block.expansion, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels * block.expansion),
+            )
+
+        layers = []
+        # 添加该阶段的第一个块，它可能包含下采样
+        layers.append(block(self.in_channels, out_channels, stride, downsample))
+        
+        # 更新in_channels为当前阶段的输出通道数
+        self.in_channels = out_channels * block.expansion
+        
+        # 添加该阶段剩余的块
+        for _ in range(1, num_blocks):
+            layers.append(block(self.in_channels, out_channels))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
         x = self.fc(x)
 
         return x
-
-    

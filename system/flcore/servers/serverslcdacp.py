@@ -38,14 +38,10 @@ class slcdacp(Server):
         for client in self.selected_clients:
             self.sum_bath_cnt = client.get_train_bath_num() + self.sum_bath_cnt
         self.sum_bath_cnt = self.sum_bath_cnt * self.args.global_rounds
-        # 计算 1 轮的总批次数
-        batches_per_round = self.sum_bath_cnt/self.args.global_rounds
         
-        # 将 1 轮的总批次数作为参数传递给 cdacp (命名为 one_round_batches)
+        batches_per_round = self.sum_bath_cnt / self.args.global_rounds
         one_round_batches = batches_per_round
         
-        
-        # 将 1 轮的批次总数传递给剪枝工具
         self.cdacp = channelstoolcdacp(self.args, self.sum_bath_cnt, one_round_batches)
         
         print(f"\nJoin ratio / total clients: {self.join_ratio} / {self.num_clients}")
@@ -60,10 +56,13 @@ class slcdacp(Server):
         os.makedirs(self.new_dir_path, exist_ok=True)
         self.all_centers_list = []
         self.global_centers = None
+        
+        # 用于存储上一轮的历史平均分数，以便计算变化量
+        self.previous_round_avg_scores = None
 
     def split_evaluate(self, acc=None, loss=None):
         eval_model = None
-        if self.args.prune_tool in ['default_mask','default_mask_gradient', 'default_recent_10_rounds_mask_grad', 'default_recent_1_rounds_mask_grad','default_mask_grad_momentum_0.7','default_mask_grad_scheduler','STD_mask_grad','rand_top-k_mask_grad','fixed_alpha_mask_grad']:
+        if self.args.prune_tool in ['default_mask','default_mask_gradient', 'default_recent_10_rounds_mask_grad', 'default_recent_1_rounds_mask_grad','default_mask_grad_momentum_0.7','default_mask_grad_scheduler','STD_mask_grad','rand_top-k_mask_grad','fixed_alpha_mask_grad','default_bath_STD_mask_gradient','default_bath_value_mask_gradient','index_rand_prune_mask_gradient','default_dot_mask_grad_min_max']:
             print("评估 default_mask 策略: 使用最后一次训练生成的掩码...")
             last_mask = self.cdacp.get_last_mask()
             if last_mask is None:
@@ -72,7 +71,7 @@ class slcdacp(Server):
             else:
                 eval_model = PrunedModelWrapper(self.down_model, self.up_model, last_mask)
         
-        elif self.args.prune_tool in ['default_keep_count_mask', 'default_mask_keep_counts_grad']:
+        elif self.args.prune_tool in ['default_keep_count_mask', 'default_mask_keep_counts_grad','default_dot_mask_keep_counts_grad','default_dot_mask_keep_countsgrad_min_max']:
             print(f"评估 {self.args.prune_tool} 策略: 使用历史保留次数最多的掩码...")
             static_mask = self.cdacp.default_mask(pruning_percentage=self.args.purning_base)
             if static_mask is None:
@@ -113,36 +112,95 @@ class slcdacp(Server):
         logger.info(f"Std Test Accuracy: {np.std(accs):.4f}")
         logger.info(f"Std Test AUC: {np.std(aucs):.4f}")
 
+
     def train(self):
-        for i in range(self.global_rounds + 1):
-            logger = logging.getLogger(__name__)
-            s_t = time.time()
-            client_pruning_rates = {}
-            self.send_split_models(self.down_model)
-            if i % self.eval_gap == 0:
-                print(f"\n-------------Round number: {i}-------------")
-                print("\nEvaluate global model")
-                self.split_evaluate()
-            for client in self.selected_clients:
-                self.up_model, self.down_model, rates = client.split_train(self.up_model, self.cdacp)
+            for i in range(self.global_rounds + 1):
+                logger = logging.getLogger(__name__)
+                s_t = time.time()
+                client_pruning_rates = {}
+                
+                # 在每轮开始前，记录当前的通道保留次数
+                counts_before_round = None
+                if self.cdacp.channel_kept_counts is not None:
+                    counts_before_round = self.cdacp.channel_kept_counts.clone().detach()
+
                 self.send_split_models(self.down_model)
-                if rates:
-                    avg_rate = sum(rates) / len(rates)
-                    client_pruning_rates[client.id] = avg_rate
-            if client_pruning_rates:
-                avg_rate_for_round = sum(client_pruning_rates.values()) / len(client_pruning_rates)
-                print(f"-------------Round {i} Pruning Rates-------------")
-                logger.info(f"-------------Round {i} Pruning Rates-------------")
-                for client_id, avg_rate in client_pruning_rates.items():
-                    print(f"Client {client_id} Average Pruning Rate: {avg_rate:.4f}")
-                    logger.info(f"Client {client_id} Average Pruning Rate: {avg_rate:.4f}")
-                print(f"Overall Average Pruning Rate for Round {i}: {avg_rate_for_round:.4f}")
-                logger.info(f"Overall Average Pruning Rate for Round {i}: {avg_rate_for_round:.4f}")
-            self.Budget.append(time.time() - s_t)
-            print('-' * 25, 'time cost', '-' * 25, self.Budget[-1])
-            if self.auto_break and self.check_done(acc_lss=[self.rs_test_acc], top_cnt=self.top_cnt):
-                break
-            self.global_model = nn.Sequential(copy.deepcopy(self.down_model), copy.deepcopy(self.up_model))
+                if i % self.eval_gap == 0:
+                    print(f"\n-------------Round number: {i}-------------")
+                    print("\nEvaluate global model")
+                    self.split_evaluate()
+
+                for client in self.selected_clients:
+                    self.up_model, self.down_model, rates = client.split_train(self.up_model, self.cdacp)
+                    self.send_split_models(self.down_model)
+                    if rates:
+                        avg_rate = sum(rates) / len(rates)
+                        client_pruning_rates[client.id] = avg_rate
+                
+                # --- 以下为每轮结束后的综合信息打印/日志记录 ---
+
+                # 1. 打印并记录本轮剪枝率
+                if client_pruning_rates:
+                    avg_rate_for_round = sum(client_pruning_rates.values()) / len(client_pruning_rates)
+                    print(f"\n-------------Round {i} Pruning Rates-------------")
+                    logger.info(f"-------------Round {i} Pruning Rates-------------")
+                    for client_id, avg_rate in client_pruning_rates.items():
+                        print(f"Client {client_id} Average Pruning Rate: {avg_rate:.4f}")
+                        logger.info(f"Client {client_id} Average Pruning Rate: {avg_rate:.4f}")
+                    print(f"Overall Average Pruning Rate for Round {i}: {avg_rate_for_round:.4f}")
+                    logger.info(f"Overall Average Pruning Rate for Round {i}: {avg_rate_for_round:.4f}")
+                
+                # 2. 将通道分数分析以字典格式写入日志
+                logger.info(f"--- Channel Score Analysis at the end of Round {i} ---")
+                if self.cdacp.historical_scores is not None:
+                    total_batches_processed = self.cdacp.current_batch_idx
+                    if total_batches_processed > 0:
+                        hist_scores_tensor = self.cdacp.historical_scores.cpu()
+                        current_round_avg_scores = hist_scores_tensor / total_batches_processed
+                        
+                        if self.previous_round_avg_scores is not None:
+                            this_round_contribution_score = current_round_avg_scores - self.previous_round_avg_scores
+                        else:
+                            this_round_contribution_score = current_round_avg_scores
+
+                        # ---- [核心修改] 将分数转换为字典格式 ----
+                        # 为了日志可读性，对浮点数保留6位小数
+                        historical_avg_dict = {ch_idx: round(score.item(), 6) for ch_idx, score in enumerate(current_round_avg_scores)}
+                        this_round_score_dict = {ch_idx: round(score.item(), 6) for ch_idx, score in enumerate(this_round_contribution_score)}
+
+                        logger.info(f"Historical Averages: {historical_avg_dict}")
+                        logger.info(f"This Round's Scores: {this_round_score_dict}")
+                        # ---- [核心修改结束] ----
+                        
+                        self.previous_round_avg_scores = current_round_avg_scores.clone()
+                    else:
+                        logger.info("  No batches processed yet, scores cannot be analyzed.")
+                else:
+                    logger.info("  No scores recorded for this round.")
+                
+                # 3. 打印并记录通道保留次数增量
+                print(f"\n--- Round {i} Channel Kept Counts Increment ---")
+                logger.info(f"--- Round {i} Channel Kept Counts Increment ---")
+                counts_after_round = self.cdacp.channel_kept_counts
+                if counts_after_round is None:
+                    print("本轮未进行任何剪枝操作 (This round had no pruning operations).")
+                    logger.info("This round had no pruning operations.")
+                else:
+                    if counts_before_round is None:
+                        counts_before_round = torch.zeros_like(counts_after_round)
+                    increment_for_round = counts_after_round - counts_before_round
+                    increment_dict = {ch_idx: int(inc.item()) for ch_idx, inc in enumerate(increment_for_round)}
+                    print(f"本轮所有通道增量 (Increments for all channels this round): {increment_dict}")
+                    logger.info(f"Increments for all channels this round: {increment_dict}")
+                    total_counts_dict = {ch_idx: int(count.item()) for ch_idx, count in enumerate(counts_after_round)}
+                    print(f"当前累积总数 (New total counts): {total_counts_dict}")
+                    logger.info(f"New total counts: {total_counts_dict}")
+
+                self.Budget.append(time.time() - s_t)
+                print('\n' + '-' * 25, 'time cost', '-' * 25, self.Budget[-1])
+                if self.auto_break and self.check_done(acc_lss=[self.rs_test_acc], top_cnt=self.top_cnt):
+                    break
+                self.global_model = nn.Sequential(copy.deepcopy(self.down_model), copy.deepcopy(self.up_model))
 
     def _evaluate_model_for_round(self, model_to_evaluate, clients_to_test):
         num_samples_test, tot_correct_test = [], []
@@ -181,8 +239,6 @@ class slcdacp(Server):
                 sim_down_model = copy.deepcopy(self.down_model)
                 sim_up_model.load_state_dict(best_up_model_state)
                 sim_down_model.load_state_dict(best_down_model_state)
-                # This part needs adjustment if the new logic is to be used in the experiment
-                # 使用 1 轮批次总数作为 one_round_batches
                 sim_cdacp = channelstoolcdacp(self.args, self.sum_bath_cnt, self.cdacp.one_round_batches) 
                 sim_clients = []
                 for client_template in self.clients:
@@ -235,3 +291,7 @@ class slcdacp(Server):
         logger.info("===== EXPERIMENT SUMMARY =====")
         for stage_name, alpha_val in optimal_alphas.items():
             logger.info(f"Stage: {stage_name}, Optimal Alpha: {alpha_val:.2f}")
+
+
+
+            

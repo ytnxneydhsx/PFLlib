@@ -64,7 +64,6 @@ class clientslcdacp(Client):
                     time.sleep(0.1 * np.abs(np.random.rand()))
 
                 down_output = self.model(x)
-
                 # 1. 前向傳播剪枝
                 if self.pruning_tool_name == 'historical':
                     pruned_data, current_pruning_rate = cdacp.prune_channels_historical_only(down_output, y)
@@ -114,7 +113,27 @@ class clientslcdacp(Client):
                 elif self.pruning_tool_name == 'rand_top-k_mask_grad':
                     pruned_data, current_pruning_rate = cdacp.prune_by_probabilistic_magnitude(down_output, y)          
                 elif self.pruning_tool_name == 'fixed_alpha_mask_grad':
-                    pruned_data, current_pruning_rate = cdacp.prune_channels_fixed_alpha(down_output, y, self.fixed_alpha)                
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_fixed_alpha(down_output, y, self.fixed_alpha)        
+                elif self.pruning_tool_name == 'uniform_quant':
+                    pruned_data, current_pruning_rate = cdacp.prune_by_uniform_quantization(down_output, y)
+                elif self.pruning_tool_name == 'default_bath_STD_mask_gradient':
+                    pruned_data, current_pruning_rate = cdacp.prune_batch_STD(down_output, y)         
+                elif self.pruning_tool_name == 'default_bath_value_mask_gradient':
+                    pruned_data, current_pruning_rate = cdacp.prune_batch_value(down_output, y)                
+                elif self.pruning_tool_name == 'default_bath_value_mask_keep_counts_gradient':
+                    pruned_data, current_pruning_rate = cdacp.prune_batch_value(down_output, y)      
+                elif self.pruning_tool_name == 'index_prune_mask_gradient':
+                    pruned_data, current_pruning_rate = cdacp.prune_by_channel_index(down_output, y)        
+                elif self.pruning_tool_name == 'index_rand_prune_mask_gradient':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_fixed_random(down_output, y)      
+                elif self.pruning_tool_name == 'default_dot_mask_keep_counts_grad':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_dot(down_output, y)  
+                elif self.pruning_tool_name == 'default_dot_mask_grad':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_dot(down_output, y)  
+                elif self.pruning_tool_name == 'default_dot_mask_grad_min_max':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_dot_min_max(down_output, y)  
+                elif self.pruning_tool_name == 'default_dot_mask_keep_countsgrad_min_max':
+                    pruned_data, current_pruning_rate = cdacp.prune_channels_dot_min_max(down_output, y)  
                 else: 
                     pruned_data, current_pruning_rate = cdacp.prune_channels(down_output, y)
                 
@@ -129,7 +148,7 @@ class clientslcdacp(Client):
                 loss.backward()
                 
                 # [核心修正] 當策略為帶有 _grad 後綴的方法時，執行手動梯度掩碼
-                if self.pruning_tool_name in ['default_mask_gradient', 'default_mask_keep_counts_grad', 'default_recent_10_rounds_mask_grad','default_recent_1_rounds_mask_grad','default_mask_grad_momentum_0.7','default_mask_grad_scheduler','STD_mask_grad','rand_top-k_mask_grad','fixed_alpha_mask_grad']:
+                if self.pruning_tool_name in ['default_mask_gradient', 'default_mask_keep_counts_grad', 'default_recent_10_rounds_mask_grad','default_recent_1_rounds_mask_grad','default_mask_grad_momentum_0.7','default_mask_grad_scheduler','STD_mask_grad','rand_top-k_mask_grad','fixed_alpha_mask_grad','default_bath_STD_mask_gradient','default_bath_value_mask_gradient','default_bath_value_mask_keep_counts_gradient','index_prune_mask_gradient','index_rand_prune_mask_gradient','default_dot_mask_keep_counts_grad','default_dot_mask_grad_min_max','default_dot_mask_keep_countsgrad_min_max']:
                     last_mask = cdacp.get_last_mask()
                     if last_mask is not None:
                         last_layer = self.model[-1] 
